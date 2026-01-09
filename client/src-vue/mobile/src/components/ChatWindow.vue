@@ -3,6 +3,7 @@ import { ref, watch, nextTick } from 'vue'
 import MessageItem from './MessageItem.vue'
 import InputArea from './InputArea.vue'
 import type { Message } from '../types'
+import favicon from '../assets/images/favicon.ico'
 
 const props = defineProps<{
   messages: Message[]
@@ -59,25 +60,9 @@ function handleSend(message: string) {
     </div>
     <div ref="messagesContainer" class="flex-1 overflow-y-auto overscroll-contain">
       <div v-if="messages.length === 0" class="h-full flex flex-col items-center justify-center text-zinc-400 px-6">
-        <div class="w-16 h-16 rounded-full bg-btn-primary flex items-center justify-center text-white text-2xl font-bold mb-4">
-          C
-        </div>
+        <img :src="favicon" alt="Claude" class="w-16 h-16 rounded-full mb-4" />
         <h2 class="text-xl font-medium text-zinc-200 mb-2">Claude 对话</h2>
         <p class="text-center text-sm">在下方输入消息开始对话</p>
-        <div class="mt-6 grid grid-cols-2 gap-2 w-full max-w-sm">
-          <div class="p-3 bg-input-bg rounded-lg text-sm text-zinc-300 active:bg-input-bg/70 cursor-pointer transition-colors touch-manipulation">
-            "解释量子计算"
-          </div>
-          <div class="p-3 bg-input-bg rounded-lg text-sm text-zinc-300 active:bg-input-bg/70 cursor-pointer transition-colors touch-manipulation">
-            "写一个 Python 函数"
-          </div>
-          <div class="p-3 bg-input-bg rounded-lg text-sm text-zinc-300 active:bg-input-bg/70 cursor-pointer transition-colors touch-manipulation">
-            "总结这篇文章"
-          </div>
-          <div class="p-3 bg-input-bg rounded-lg text-sm text-zinc-300 active:bg-input-bg/70 cursor-pointer transition-colors touch-manipulation">
-            "帮我头脑风暴"
-          </div>
-        </div>
       </div>
       <div v-else class="pb-2">
         <MessageItem

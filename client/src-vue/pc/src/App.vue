@@ -35,38 +35,29 @@ const {
   deleteConversation
 } = useChat()
 
-// Update dialog state
 const showUpdateDialog = ref(false)
 const updateInfo = ref<UpdateCheckResult | null>(null)
 const currentVersion = ref('')
 
-// Connection error dialog state
 const showConnectionErrorDialog = ref(false)
 
-// Device banned dialog state
 const showBannedDialog = ref(false)
 const bannedReason = ref('')
 
-// Version outdated dialog state
 const showVersionOutdatedDialog = ref(false)
 const outdatedVersionInfo = ref<{ current_version: string; required_version: string; message: string } | null>(null)
 
-// Notice dialog state
 const showNoticeDialog = ref(false)
 const noticeContent = ref(staticNoticeContent)
 
-// Usage blocked dialog visibility
 const showUsageBlockedDialog = ref(true)
 
-// Server unavailable dialog visibility
 const showServerUnavailableDialog = ref(true)
 
-// Event unlisteners
 let connectionErrorUnlisten: UnlistenFn | null = null
 let deviceBannedUnlisten: UnlistenFn | null = null
 let versionOutdatedUnlisten: UnlistenFn | null = null
 
-// Computed property for rendered markdown
 const renderedNotice = computed(() => {
   if (!noticeContent.value) return ''
   return marked(noticeContent.value) as string
@@ -75,9 +66,8 @@ const renderedBannedReason = computed(() => {
   if (!bannedReason.value) return ''
   return marked(bannedReason.value) as string
 })
-const sendDisabled = computed(() => showBannedDialog.value || usageBlocked.value || showVersionOutdatedDialog.value || serverUnavailable.value)
+const sendDisabled = computed(() => showBannedDialog.value || usageBlocked.value || showVersionOutdatedDialog.value || serverUnavailable.value || !isConnected.value)
 
-// Open download URL in browser
 async function openDownloadPage() {
   if (updateInfo.value?.download_url) {
     await open(updateInfo.value.download_url)
@@ -120,22 +110,16 @@ onMounted(async () => {
   checkNotice()
   checkForUpdates()
 
-  // Listen for connection errors
   connectionErrorUnlisten = await listen<string>('connection_error', (event) => {
     const err = event.payload
-    // Show special dialog for server connection failure
     if (err.includes('claude.nixdorfer.com') || err.includes('连接失败') || err.includes('dial')) {
       showConnectionErrorDialog.value = true
     }
   })
-
-  // Listen for device banned event
   deviceBannedUnlisten = await listen<{ reason?: string }>('device_banned', (event) => {
     bannedReason.value = event.payload.reason || '您的设备已被封禁'
     showBannedDialog.value = true
   })
-
-  // Listen for version outdated event
   versionOutdatedUnlisten = await listen<{ current_version: string; required_version: string; message: string }>('version_outdated', async (event) => {
     outdatedVersionInfo.value = event.payload
     showVersionOutdatedDialog.value = true
@@ -202,7 +186,6 @@ function handleDelete(id: string) {
       @clear-error="clearError"
     />
 
-    <!-- Update Available Dialog -->
     <Modal
       :show="showUpdateDialog"
       title="发现新版本"
@@ -253,7 +236,6 @@ function handleDelete(id: string) {
       </div>
     </Modal>
 
-    <!-- Connection Error Dialog -->
     <Modal
       :show="showConnectionErrorDialog"
       title="连接失败"
@@ -276,7 +258,6 @@ function handleDelete(id: string) {
       </div>
     </Modal>
 
-    <!-- Notice Dialog -->
     <Modal
       :show="showNoticeDialog"
       title="公告"
@@ -289,7 +270,6 @@ function handleDelete(id: string) {
       <div class="prose prose-invert prose-sm max-w-none" v-html="renderedNotice"></div>
     </Modal>
 
-    <!-- Version Outdated Dialog - Unclosable -->
     <div
       v-if="showVersionOutdatedDialog"
       class="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center"
@@ -339,7 +319,6 @@ function handleDelete(id: string) {
       </div>
     </div>
 
-    <!-- Device Banned Dialog - Closable -->
     <div
       v-if="showBannedDialog"
       class="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
@@ -375,7 +354,6 @@ function handleDelete(id: string) {
       </div>
     </div>
 
-    <!-- Usage Blocked Dialog - Closable -->
     <div
       v-if="usageBlocked && showUsageBlockedDialog"
       class="fixed inset-0 z-[9998] bg-black/90 flex items-center justify-center"
@@ -410,7 +388,6 @@ function handleDelete(id: string) {
       </div>
     </div>
 
-    <!-- Server Unavailable Dialog -->
     <div
       v-if="serverUnavailable && showServerUnavailableDialog"
       class="fixed inset-0 z-[9997] bg-black/90 flex items-center justify-center"

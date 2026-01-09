@@ -7,6 +7,7 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(debug_assertions)]
     tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
@@ -17,10 +18,8 @@ pub fn run() {
                 .map(|p| p.parent().unwrap_or(&p).to_path_buf())
                 .expect("Failed to get exe dir");
 
-            // Initialize database
             database::init_db(&exe_dir).expect("Failed to initialize database");
 
-            // Initialize WebSocket manager
             let ws_manager = websocket::WebSocketManager::new();
             app.manage(ws_manager);
 

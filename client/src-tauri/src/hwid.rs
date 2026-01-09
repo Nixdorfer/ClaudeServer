@@ -1,5 +1,10 @@
 use once_cell::sync::Lazy;
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 static HWID: Lazy<String> = Lazy::new(|| generate_hwid());
 
@@ -10,32 +15,26 @@ pub fn get_hwid() -> &'static str {
 fn generate_hwid() -> String {
     let mut components = Vec::new();
 
-    // Get CPU ID
     if let Some(cpu_id) = get_cpu_id() {
         components.push(cpu_id);
     }
 
-    // Get disk serial
     if let Some(disk_serial) = get_disk_serial() {
         components.push(disk_serial);
     }
 
-    // Get MAC address
     if let Some(mac) = get_mac_address() {
         components.push(mac);
     }
 
-    // Get motherboard serial
     if let Some(mb_serial) = get_motherboard_serial() {
         components.push(mb_serial);
     }
 
-    // If no components found, generate a fallback ID
     if components.is_empty() {
         components.push(generate_fallback_id());
     }
 
-    // Combine all components and hash them
     let combined = components.join("|");
     hash_string(&combined)
 }
@@ -45,6 +44,7 @@ fn get_cpu_id() -> Option<String> {
     {
         let output = Command::new("wmic")
             .args(["cpu", "get", "ProcessorId"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
 
@@ -86,7 +86,6 @@ fn get_cpu_id() -> Option<String> {
 
     #[cfg(target_os = "android")]
     {
-        // Android: try to get Build.SERIAL or ANDROID_ID
         let output = Command::new("getprop")
             .args(["ro.serialno"])
             .output()
@@ -107,6 +106,7 @@ fn get_disk_serial() -> Option<String> {
     {
         let output = Command::new("wmic")
             .args(["diskdrive", "get", "SerialNumber"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
 
@@ -121,7 +121,6 @@ fn get_disk_serial() -> Option<String> {
 
     #[cfg(target_os = "linux")]
     {
-        // Try to get disk ID from /dev/disk/by-id
         if let Ok(entries) = std::fs::read_dir("/dev/disk/by-id") {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -157,6 +156,7 @@ fn get_mac_address() -> Option<String> {
     {
         let output = Command::new("getmac")
             .args(["/fo", "csv", "/nh"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
 
@@ -216,6 +216,7 @@ fn get_motherboard_serial() -> Option<String> {
     {
         let output = Command::new("wmic")
             .args(["baseboard", "get", "SerialNumber"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .ok()?;
 
@@ -262,7 +263,6 @@ fn get_motherboard_serial() -> Option<String> {
 }
 
 fn generate_fallback_id() -> String {
-    // Use hostname + username as fallback
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -280,7 +280,6 @@ fn hash_string(input: &str) -> String {
     input.hash(&mut hasher);
     let hash1 = hasher.finish();
 
-    // Do a second pass with different seed
     let reversed: String = input.chars().rev().collect();
     let mut hasher2 = DefaultHasher::new();
     reversed.hash(&mut hasher2);

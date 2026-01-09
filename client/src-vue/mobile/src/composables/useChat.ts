@@ -3,8 +3,10 @@ import type { Message, Conversation, UsageStatus, UpdateCheckResult, VersionInfo
 
 const WS_URL = 'wss://claude.nixdorfer.com/data/websocket/create'
 const API_URL = 'https://claude.nixdorfer.com/api/device/status'
+const USAGE_URL = 'https://claude.nixdorfer.com/api/usage'
 const UPDATE_URL = 'https://raw.githubusercontent.com/Nixdorfer/ClaudeServer/main/info.json'
-const CURRENT_VERSION = '1.0.0'
+declare const __APP_VERSION__: string
+const CURRENT_VERSION = __APP_VERSION__
 const STORAGE_KEY_CONVERSATIONS = 'claude_conversations'
 const STORAGE_KEY_MESSAGES = 'claude_messages_'
 const STORAGE_KEY_DEVICE_ID = 'claude_device_id'
@@ -79,33 +81,54 @@ export function useChat() {
     }
   }
   function connect() {
-    if (ws && ws.readyState === WebSocket.OPEN) return
+    console.log('[WS] connect() called, ws:', ws?.readyState, 'serverUnavailable:', serverUnavailable.value)
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('[WS] Already connected, skipping')
+      return
+    }
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
-    if (serverUnavailable.value) return
+    if (serverUnavailable.value) {
+      console.log('[WS] Server unavailable, skipping connection')
+      return
+    }
     const deviceId = getDeviceId()
-    ws = new WebSocket(`${WS_URL}?device_id=${deviceId}&platform=android`)
+    const url = `${WS_URL}?device_id=${deviceId}&platform=android`
+    console.log('[WS] Connecting to:', url)
+    console.log('[WS] Device ID:', deviceId)
+    try {
+      ws = new WebSocket(url)
+    } catch (e) {
+      console.error('[WS] WebSocket creation failed:', e)
+      return
+    }
     ws.onopen = () => {
+      console.log('[WS] Connection opened')
       isConnected.value = true
       error.value = null
       connectAttempts = 0
     }
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.log('[WS] Connection closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean)
       isConnected.value = false
       if (!isBanned.value && !serverUnavailable.value) {
         connectAttempts++
+        console.log('[WS] Connect attempts:', connectAttempts)
         if (connectAttempts >= 3) {
+          console.log('[WS] Max attempts reached, marking server unavailable')
           serverUnavailable.value = true
         } else {
+          console.log('[WS] Will retry in 3 seconds...')
           reconnectTimer = window.setTimeout(() => {
             connect()
           }, 3000)
         }
       }
     }
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error('[WS] Connection error:', event)
       isConnected.value = false
       connectAttempts++
       if (connectAttempts >= 3) {
@@ -113,10 +136,11 @@ export function useChat() {
       }
     }
     ws.onmessage = (event) => {
+      console.log('[WS] Message received:', event.data.substring(0, 200))
       try {
         handleMessage(JSON.parse(event.data))
       } catch (e) {
-        console.error('Parse message error:', e)
+        console.error('[WS] Parse message error:', e)
       }
     }
   }
@@ -148,6 +172,7 @@ export function useChat() {
         saveMessages(currentConversationId.value)
         updateConversationMeta()
       }
+      fetchUsageStatus()
     } else if (msg.type === 'error' && data) {
       error.value = (data.error as string) || (data.message as string) || '未知错误'
       isLoading.value = false
@@ -298,6 +323,8 @@ export function useChat() {
     if (ws) {
       ws.close()
     }
+    serverUnavailable.value = false
+    connectAttempts = 0
     connect()
   }
   function deleteConversation(id: string) {
@@ -315,25 +342,74 @@ export function useChat() {
       saveConversations()
     }
   }
+  async function fetchUsageStatus() {
+    const deviceId = getDeviceId()
+    const url = `${USAGE_URL}?device_id=${deviceId}&platform=android`
+    console.log('[API] Fetching usage status:', url)
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      })
+      console.log('[API] Usage response status:', response.status)
+      if (!response.ok) {
+        console.log('[API] Usage response not OK')
+        usageStatus.value = { five_hour: 0, five_hour_reset: '', seven_day: 0, seven_day_reset: '', seven_day_sonnet: 0, seven_day_sonnet_reset: '', limit_five_hour: 100, limit_seven_day: 100, is_blocked: false, block_reason: '', block_reset_time: '' }
+        return
+      }
+      const data = await response.json()
+      console.log('[API] Usage data:', JSON.stringify(data))
+      usageStatus.value = {
+        five_hour: data.five_hour_utilization || 0,
+        five_hour_reset: data.five_hour_resets_at || '',
+        seven_day: data.seven_day_utilization || 0,
+        seven_day_reset: data.seven_day_resets_at || '',
+        seven_day_sonnet: data.seven_day_opus_utilization || 0,
+        seven_day_sonnet_reset: data.seven_day_opus_resets_at || '',
+        limit_five_hour: 100,
+        limit_seven_day: 100,
+        is_blocked: data.is_blocked || false,
+        block_reason: data.block_reason || '',
+        block_reset_time: data.block_reset_time || ''
+      }
+      if (data.is_blocked) {
+        usageBlocked.value = true
+        usageBlockMessage.value = formatUsageBlockMessage(data.block_reason || '', data.block_reset_time || '')
+      }
+    } catch (e) {
+      console.error('[API] Failed to fetch usage status:', e)
+      usageStatus.value = { five_hour: 0, five_hour_reset: '', seven_day: 0, seven_day_reset: '', seven_day_sonnet: 0, seven_day_sonnet_reset: '', limit_five_hour: 100, limit_seven_day: 100, is_blocked: false, block_reason: '', block_reset_time: '' }
+    }
+  }
   async function checkDeviceStatusOnStartup() {
+    console.log('[API] Checking device status...')
     try {
       const deviceId = getDeviceId()
-      const response = await fetch(`${API_URL}?device_id=${deviceId}&platform=android`)
-      if (!response.ok) return
+      const url = `${API_URL}?device_id=${deviceId}&platform=android`
+      console.log('[API] Request URL:', url)
+      const response = await fetch(url)
+      console.log('[API] Response status:', response.status)
+      if (!response.ok) {
+        console.log('[API] Response not OK, skipping')
+        return
+      }
       const data = await response.json()
+      console.log('[API] Response data:', data)
       if (data.is_banned) {
+        console.log('[API] Device is banned')
         isBanned.value = true
         bannedReason.value = (data.ban_reason as string) || '您的设备已被封禁'
         return
       }
       if (data.is_blocked) {
+        console.log('[API] Device is blocked')
         usageBlocked.value = true
         const reason = (data.block_reason as string) || ''
         const resetTime = (data.block_reset_time as string) || ''
         usageBlockMessage.value = formatUsageBlockMessage(reason, resetTime)
       }
     } catch (e) {
-      console.error('Failed to check device status:', e)
+      console.error('[API] Failed to check device status:', e)
     }
   }
   function compareVersions(current: string, latest: string): boolean {
@@ -370,8 +446,12 @@ export function useChat() {
     }
   }
   function initialize() {
+    console.log('[App] Initializing...')
+    console.log('[App] WS_URL:', WS_URL)
+    console.log('[App] API_URL:', API_URL)
     loadConversationsFromStorage()
     checkDeviceStatusOnStartup()
+    fetchUsageStatus()
     connect()
   }
   function cleanup() {
@@ -415,6 +495,8 @@ export function useChat() {
     clearError,
     renameConversation,
     deleteConversation,
-    checkForUpdates
+    checkForUpdates,
+    fetchUsageStatus,
+    currentVersion: CURRENT_VERSION
   }
 }

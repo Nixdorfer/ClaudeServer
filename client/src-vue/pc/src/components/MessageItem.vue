@@ -2,12 +2,12 @@
 import { computed } from 'vue'
 import { marked } from 'marked'
 import type { Message } from '../types'
+import favicon from '../assets/images/favicon.ico'
 
 const props = defineProps<{
   message: Message
 }>()
 
-// 配置 marked
 marked.setOptions({
   breaks: true,
   gfm: true
@@ -25,11 +25,9 @@ const renderedContent = computed(() => {
     :class="message.role === 'user' ? 'bg-transparent' : 'bg-input-bg/30'"
   >
     <div class="max-w-3xl mx-auto px-4 flex gap-4">
-      <div
-        class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium"
-        :class="message.role === 'user' ? 'bg-btn-primary' : 'bg-btn-primary'"
-      >
-        {{ message.role === 'user' ? 'U' : 'C' }}
+      <img v-if="message.role === 'assistant'" :src="favicon" alt="Claude" class="flex-shrink-0 w-8 h-8 rounded-full" />
+      <div v-else class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-btn-primary">
+        U
       </div>
 
       <div class="flex-1 min-w-0">

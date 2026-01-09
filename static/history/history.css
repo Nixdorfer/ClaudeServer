@@ -708,7 +708,6 @@
     font-style: italic;
 }
 
-/* 状态徽章 */
 .status-badge {
     display: inline-block;
     padding: 3px 10px;
@@ -737,7 +736,6 @@
     color: #FF9800;
 }
 
-/* 对话ID样式 */
 .conversation-id {
     font-family: 'Cascadia Code', monospace;
     font-size: 12px;
@@ -746,13 +744,11 @@
     border-radius: 3px;
 }
 
-/* 预览单元格 */
 .preview-cell {
     color: var(--text-secondary);
     font-size: 13px;
 }
 
-/* 按钮样式 */
 .btn {
     padding: 6px 12px;
     border: none;

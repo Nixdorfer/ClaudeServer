@@ -11,6 +11,11 @@ const config: CapacitorConfig = {
     buildOptions: {
       releaseType: 'APK'
     }
+  },
+  plugins: {
+    CapacitorHttp: {
+      enabled: true
+    }
   }
 };
 

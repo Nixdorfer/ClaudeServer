@@ -156,7 +156,6 @@ pub fn add_message(conversation_id: &str, role: &str, content: &str) -> Result<(
             params![conversation_id],
         )?;
 
-        // Update first_message if this is the first user message
         if role == "user" {
             let count: i32 = conn.query_row(
                 "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1 AND role = 'user'",

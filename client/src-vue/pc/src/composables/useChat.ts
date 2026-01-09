@@ -34,7 +34,7 @@ const usageBlockMessage = ref('')
 const serverUnavailable = ref(false)
 const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
-const reconnectDelay = 3000 // 3 seconds
+const reconnectDelay = 3000
 
 const unlisteners: UnlistenFn[] = []
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -106,7 +106,6 @@ export function useChat() {
         return
       }
 
-      // Schedule next reconnect attempt
       if (reconnectAttempts.value < maxReconnectAttempts) {
         reconnectTimer = setTimeout(() => {
           attemptAutoReconnect()
@@ -132,7 +131,6 @@ export function useChat() {
     } catch (e) {
       const errStr = String(e)
       console.error('获取用量状态失败:', e)
-      // Check for server unavailable errors (502, decoding errors, etc.)
       if (errStr.includes('502') || errStr.includes('Bad Gateway') || errStr.includes('decoding') || errStr.includes('expected value')) {
         serverUnavailable.value = true
       }
@@ -140,7 +138,6 @@ export function useChat() {
   }
 
   async function initialize() {
-    // Listen for events
     unlisteners.push(await listen('connected', () => {
       isConnected.value = true
       isConnecting.value = false
@@ -153,7 +150,6 @@ export function useChat() {
     unlisteners.push(await listen('disconnected', () => {
       isConnected.value = false
       isConnecting.value = false
-      // Auto-reconnect after unexpected disconnect
       reconnectTimer = setTimeout(() => {
         attemptAutoReconnect()
       }, reconnectDelay)
@@ -163,7 +159,6 @@ export function useChat() {
       error.value = event.payload
       isConnected.value = false
       isConnecting.value = false
-      // Auto-reconnect after connection error
       reconnectTimer = setTimeout(() => {
         attemptAutoReconnect()
       }, reconnectDelay)
@@ -247,7 +242,6 @@ export function useChat() {
       }
     }))
 
-    // Listen for usage blocked event from server
     unlisteners.push(await listen<{ block_reason: string; block_reset_time: string }>('usage_blocked', (event) => {
       const data = event.payload
       isLoading.value = false
@@ -256,13 +250,11 @@ export function useChat() {
       const relativeTime = formatRelativeTime(data.block_reset_time)
       usageBlockMessage.value = `${data.block_reason}\n${relativeTime}`
 
-      // Remove the streaming assistant message if any
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
         messages.value.pop()
       }
 
-      // Also remove the user message that triggered this
       const userMsg = messages.value[messages.value.length - 1]
       if (userMsg && userMsg.role === 'user') {
         messages.value.pop()
@@ -281,7 +273,6 @@ export function useChat() {
       const errStr = String(e)
       console.error('Connection check failed:', e)
       isConnecting.value = false
-      // Check for server unavailable errors
       if (errStr.includes('502') || errStr.includes('Bad Gateway') || errStr.includes('连接失败')) {
         serverUnavailable.value = true
       }

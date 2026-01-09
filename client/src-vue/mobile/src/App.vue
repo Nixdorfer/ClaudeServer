@@ -2,8 +2,10 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import MobileHeader from './components/MobileHeader.vue'
-import MobileDrawer from './components/MobileDrawer.vue'
+import TabBar from './components/TabBar.vue'
+import ListView from './components/ListView.vue'
 import ChatWindow from './components/ChatWindow.vue'
+import SettingsView from './components/SettingsView.vue'
 import Modal from './components/Modal.vue'
 import { useChat } from './composables/useChat'
 import { noticeContent } from '../../shared/notice'
@@ -34,10 +36,10 @@ const {
   clearError,
   renameConversation,
   deleteConversation,
-  checkForUpdates
+  checkForUpdates,
+  currentVersion
 } = useChat()
-const showDrawer = ref(false)
-const showConnectionErrorDialog = ref(false)
+const activeTab = ref<'list' | 'chat' | 'settings'>('chat')
 const showBannedDialog = ref(true)
 const showUsageBlockedDialog = ref(true)
 const showServerUnavailableDialog = ref(true)
@@ -45,8 +47,10 @@ const showNoticeDialog = ref(false)
 const showUpdateDialog = ref(false)
 const renderedNotice = computed(() => marked(noticeContent))
 const renderedBannedReason = computed(() => marked(bannedReason.value))
-const sendDisabled = computed(() => isBanned.value || usageBlocked.value || versionOutdated.value || serverUnavailable.value)
+const sendDisabled = computed(() => isBanned.value || usageBlocked.value || versionOutdated.value || serverUnavailable.value || !isConnected.value)
 const headerTitle = computed(() => {
+  if (activeTab.value === 'list') return '对话列表'
+  if (activeTab.value === 'settings') return '设置'
   if (currentConversation.value) {
     const name = currentConversation.value.name || currentConversation.value.first_message
     if (name && name.length > 15) {
@@ -69,11 +73,22 @@ onMounted(async () => {
 onUnmounted(() => {
   cleanup()
 })
+function handleSelectConversation(id: string) {
+  selectConversation(id)
+  activeTab.value = 'chat'
+}
+function handleNewChat() {
+  newConversation()
+  activeTab.value = 'chat'
+}
 function handleRename(id: string, name: string) {
   renameConversation(id, name)
 }
 function handleDelete(id: string) {
   deleteConversation(id)
+}
+function handleTabChange(tab: 'list' | 'chat' | 'settings') {
+  activeTab.value = tab
 }
 </script>
 
@@ -82,9 +97,20 @@ function handleDelete(id: string) {
     <MobileHeader
       :title="headerTitle"
       :is-connected="isConnected"
-      @open-drawer="showDrawer = true"
+      :show-menu="false"
+    />
+    <ListView
+      v-show="activeTab === 'list'"
+      class="flex-1 min-h-0"
+      :conversations="conversations"
+      :current-id="currentConversationId"
+      @select="handleSelectConversation"
+      @new-chat="handleNewChat"
+      @rename="handleRename"
+      @delete="handleDelete"
     />
     <ChatWindow
+      v-show="activeTab === 'chat'"
       class="flex-1 min-h-0"
       :messages="messages"
       :is-loading="isLoading"
@@ -94,38 +120,20 @@ function handleDelete(id: string) {
       @send="sendMessage"
       @clear-error="clearError"
     />
-    <MobileDrawer
-      :show="showDrawer"
-      :conversations="conversations"
-      :current-id="currentConversationId"
+    <SettingsView
+      v-show="activeTab === 'settings'"
+      class="flex-1 min-h-0"
       :is-connected="isConnected"
       :usage-status="usageStatus"
       :usage-blocked="usageBlocked"
       :usage-block-message="usageBlockMessage"
-      @close="showDrawer = false"
-      @select="selectConversation"
-      @new-chat="newConversation"
+      :version="currentVersion"
       @reconnect="reconnect"
-      @rename="handleRename"
-      @delete="handleDelete"
     />
-    <Modal
-      :show="showConnectionErrorDialog"
-      title="连接失败"
-      confirm-text="知道了"
-      :show-cancel="false"
-      type="error"
-      @confirm="showConnectionErrorDialog = false"
-      @cancel="showConnectionErrorDialog = false"
-    >
-      <div class="space-y-3">
-        <p class="text-zinc-300 text-sm">无法连接至服务器，服务器可能已经关闭。</p>
-        <div class="bg-zinc-800/50 rounded-lg p-3">
-          <p class="text-xs text-zinc-400 mb-1">请联系管理员:</p>
-          <p class="text-sm text-zinc-300">Discord / Telegram / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>
-        </div>
-      </div>
-    </Modal>
+    <TabBar
+      :active-tab="activeTab"
+      @change="handleTabChange"
+    />
     <div
       v-if="isBanned && showBannedDialog"
       class="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center safe-area-all"

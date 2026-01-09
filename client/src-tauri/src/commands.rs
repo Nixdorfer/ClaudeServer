@@ -52,7 +52,6 @@ struct VersionInfo {
     url: String,
 }
 
-// WebSocket commands
 #[tauri::command]
 pub async fn connect(
     app: AppHandle,
@@ -81,42 +80,55 @@ pub async fn send_message(
     ws.send_message(&conversation_id, &message).await
 }
 
-// Database commands
 #[tauri::command]
-pub fn get_local_conversations() -> Result<Vec<database::LocalConversation>, String> {
-    database::get_conversations().map_err(|e| e.to_string())
+pub async fn get_local_conversations() -> Result<Vec<database::LocalConversation>, String> {
+    tokio::task::spawn_blocking(|| database::get_conversations().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_local_messages(conversation_id: String) -> Result<Vec<database::LocalMessage>, String> {
-    database::get_messages(&conversation_id).map_err(|e| e.to_string())
+pub async fn get_local_messages(conversation_id: String) -> Result<Vec<database::LocalMessage>, String> {
+    tokio::task::spawn_blocking(move || database::get_messages(&conversation_id).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn save_local_message(
+pub async fn save_local_message(
     conversation_id: String,
     role: String,
     content: String,
 ) -> Result<(), String> {
-    if !database::conversation_exists(&conversation_id) {
-        database::create_conversation(&conversation_id, "").map_err(|e| e.to_string())?;
-    }
-    database::add_message(&conversation_id, &role, &content).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || {
+        if !database::conversation_exists(&conversation_id) {
+            database::create_conversation(&conversation_id, "").map_err(|e| e.to_string())?;
+        }
+        database::add_message(&conversation_id, &role, &content).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn create_local_conversation(id: String, first_message: String) -> Result<(), String> {
-    database::create_conversation(&id, &first_message).map_err(|e| e.to_string())
+pub async fn create_local_conversation(id: String, first_message: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || database::create_conversation(&id, &first_message).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn rename_conversation(id: String, name: String) -> Result<(), String> {
-    database::update_conversation_name(&id, &name).map_err(|e| e.to_string())
+pub async fn rename_conversation(id: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || database::update_conversation_name(&id, &name).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn delete_local_conversation(id: String) -> Result<(), String> {
-    database::delete_conversation(&id).map_err(|e| e.to_string())
+pub async fn delete_local_conversation(id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || database::delete_conversation(&id).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -124,7 +136,6 @@ pub fn generate_conversation_id() -> String {
     format!("local_{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0))
 }
 
-// Usage commands
 #[tauri::command]
 pub async fn get_usage_status() -> Result<UsageStatus, String> {
     let client = reqwest::Client::builder()
@@ -164,7 +175,6 @@ pub fn format_reset_time(iso_time: String) -> String {
     }
 }
 
-// Version commands
 #[tauri::command]
 pub async fn check_for_update(app: AppHandle) -> Result<UpdateCheckResult, String> {
     let client = reqwest::Client::new();
@@ -197,18 +207,20 @@ pub fn get_current_version(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-pub fn get_notice() -> Result<String, String> {
-    let exe_dir = std::env::current_exe()
-        .map(|p| p.parent().unwrap_or(&p).to_path_buf())
-        .map_err(|e| e.to_string())?;
-
-    let notice_path = exe_dir.join("notice.md");
-
-    if notice_path.exists() {
-        std::fs::read_to_string(&notice_path).map_err(|e| e.to_string())
-    } else {
-        Ok(String::new())
-    }
+pub async fn get_notice() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        let exe_dir = std::env::current_exe()
+            .map(|p| p.parent().unwrap_or(&p).to_path_buf())
+            .map_err(|e| e.to_string())?;
+        let notice_path = exe_dir.join("notice.md");
+        if notice_path.exists() {
+            std::fs::read_to_string(&notice_path).map_err(|e| e.to_string())
+        } else {
+            Ok(String::new())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn compare_versions(current: &str, latest: &str) -> bool {

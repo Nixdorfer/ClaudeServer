@@ -26,7 +26,6 @@ body {
     overflow: hidden;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
 }
@@ -44,7 +43,6 @@ body {
     background: #444444;
 }
 
-/* Message animation */
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -60,7 +58,6 @@ body {
     animation: fadeIn 0.2s ease-out;
 }
 
-/* Typing indicator */
 @keyframes blink {
     0%, 100% { opacity: 0.2; }
     50% { opacity: 1; }
@@ -78,7 +75,6 @@ body {
     animation-delay: 0.4s;
 }
 
-/* Markdown prose styles for notice dialog */
 .prose {
     color: #d4d4d8;
     line-height: 1.6;

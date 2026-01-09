@@ -1,9 +1,10 @@
 #项目参考文件
 .ref/
 .claude/
+nul
 
 #Server端临时文件
-bin/go.sum
+server/go.sum
 
 #Server端配置文件
 src/config.yaml
@@ -18,7 +19,7 @@ client/src-vue/*/node_modules
 client/src-vue/*/dist
 client/src-vue/*/package-lock.json
 client/src-vue/*/package.json.md5
-client/src-vue/*/android/
+client/src-vue/mobile/android/
 
 #项目README
 !README.md
@@ -28,6 +29,7 @@ client/src-vue/*/android/
 *.txt
 *.md
 *.lnk
+*.apk
 *.exe
 *.exe~
 *.lib

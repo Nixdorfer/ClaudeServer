@@ -75,7 +75,6 @@ impl WebSocketManager {
 
         let (tx, mut rx) = mpsc::channel::<String>(100);
 
-        // Store sender
         *self.sender.lock().await = Some(tx);
         *self.connected.write().await = true;
 
@@ -83,10 +82,8 @@ impl WebSocketManager {
         let sender = self.sender.clone();
         let app_clone = app.clone();
 
-        // Emit connected event
         let _ = app.emit("connected", true);
 
-        // Spawn write task
         let write_connected = connected.clone();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
@@ -97,7 +94,6 @@ impl WebSocketManager {
             *write_connected.write().await = false;
         });
 
-        // Spawn read task
         tokio::spawn(async move {
             while let Some(msg) = read.next().await {
                 match msg {

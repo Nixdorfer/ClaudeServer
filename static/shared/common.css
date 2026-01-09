@@ -417,7 +417,6 @@ tr:hover {
     }
 }
 
-/* SSE 连接状态指示器 */
 .sse-status-container,
 .ws-status-container {
     padding: 15px;
@@ -514,7 +513,6 @@ tr:hover {
     }
 }
 
-/* 浅色主题调整 */
 [data-theme="light"] .sse-status.connecting,
 [data-theme="light"] .ws-status.connecting {
     background: rgba(255, 193, 7, 0.2);
@@ -548,7 +546,6 @@ tr:hover {
     background: #C62828;
 }
 
-/* SSE 重连对话框样式 */
 .sse-reconnect-dialog,
 .ws-reconnect-dialog {
     position: fixed;

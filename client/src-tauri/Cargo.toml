@@ -1,0 +1,44 @@
+[package]
+name = "claude-client"
+version = "1.0.1"
+description = "Claude Chat Client"
+authors = ["Nix <admin@nixdorfer.com>"]
+edition = "2021"
+
+[lib]
+name = "claude_client_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.11", features = ["json", "native-tls"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+native-tls = "0.2"
+url = "2"
+once_cell = "1"
+hostname = "0.3"
+whoami = "1"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-clipboard-manager = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

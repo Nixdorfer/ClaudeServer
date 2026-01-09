@@ -14,15 +14,19 @@ import (
 type Config struct {
 	Tokens TokensConfig `yaml:"tokens"`
 
-	Debug             bool        `yaml:"debug"`
-	ThreadNum         int         `yaml:"thread_num"`
-	ServerPort        int         `yaml:"server_port"`
-	APIEndpoint       string      `yaml:"api_endpoint"`
-	Proxy             ProxyConfig `yaml:"proxy"`
+	Debug            bool        `yaml:"debug"`
+	ThreadNum        int         `yaml:"thread_num"`
+	ServerPort       int         `yaml:"server_port"`
+	MinClientVersion string      `yaml:"min_client_version"`
+	APIEndpoint      string      `yaml:"api_endpoint"`
+	Proxy            ProxyConfig `yaml:"proxy"`
 	MaxTPM            int         `yaml:"max_tpm"`
 	MaxRPM            int         `yaml:"max_rpm"`
 	MaxRPD            int         `yaml:"max_rpd"`
 	RequestIntervalMS int         `yaml:"request_interval_ms"`
+
+	UsageLimitFiveHour int `yaml:"usage_limit_five_hour"`
+	UsageLimitSevenDay int `yaml:"usage_limit_seven_day"`
 
 	DBHost     string `yaml:"db_host"`
 	DBPort     int    `yaml:"db_port"`
@@ -323,6 +327,28 @@ func joinCookieParts(parts []string) string {
 		result += "; " + parts[i]
 	}
 	return result
+}
+
+func CompareVersions(current, required string) bool {
+	parseVersion := func(v string) []int {
+		parts := strings.Split(v, ".")
+		result := make([]int, 3)
+		for i := 0; i < len(parts) && i < 3; i++ {
+			fmt.Sscanf(parts[i], "%d", &result[i])
+		}
+		return result
+	}
+	curr := parseVersion(current)
+	req := parseVersion(required)
+	for i := 0; i < 3; i++ {
+		if curr[i] < req[i] {
+			return false
+		}
+		if curr[i] > req[i] {
+			return true
+		}
+	}
+	return true
 }
 
 func (c *Config) CreateHTTPClient(timeout time.Duration) *http.Client {

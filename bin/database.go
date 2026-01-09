@@ -25,9 +25,26 @@ type Stats struct {
 	ShutdownReason  string
 }
 
-type Message struct {
+// CldDevice stores device information for ban management
+type CldDevice struct {
+	DeviceID  string    `gorm:"primaryKey;type:varchar(64)" json:"device_id"`
+	Platform  string    `gorm:"type:varchar(16)" json:"platform"`
+	FirstSeen time.Time `gorm:"not null;autoCreateTime" json:"first_seen"`
+	IsBanned  bool      `gorm:"not null;default:false" json:"is_banned"`
+	BanReason string    `gorm:"type:text" json:"ban_reason"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (CldDevice) TableName() string {
+	return "cld_device"
+}
+
+// CldMessage stores chat messages (formerly Message)
+type CldMessage struct {
 	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	ConversationID string     `gorm:"type:varchar(36);not null;index:idx_conversation_id" json:"conversation_id"`
+	ConversationID string     `gorm:"type:varchar(36);not null;index:idx_cld_conversation_id" json:"conversation_id"`
+	DeviceID       string     `gorm:"type:varchar(64);index:idx_cld_device_id" json:"device_id"`
 	ExchangeNumber int        `gorm:"not null" json:"exchange_number"`
 	Request        string     `gorm:"type:text;not null" json:"request"`
 	Response       string     `gorm:"type:text" json:"response"`
@@ -38,10 +55,17 @@ type Message struct {
 	RequestTokens  *int       `json:"request_tokens"`
 	ResponseTokens *int       `json:"response_tokens"`
 	Tokens         *int       `json:"tokens"`
-	Status         string     `gorm:"type:varchar(20);not null;default:'processing';index:idx_status" json:"status"`
+	Status         string     `gorm:"type:varchar(20);not null;default:'processing';index:idx_cld_status" json:"status"`
 	Notice         string     `gorm:"type:text" json:"notice"`
 	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
 }
+
+func (CldMessage) TableName() string {
+	return "cld_message"
+}
+
+// Message is an alias for CldMessage for backward compatibility
+type Message = CldMessage
 
 func InitDB(cfg *Config) (*Database, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
@@ -63,16 +87,24 @@ func InitDB(cfg *Config) (*Database, error) {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	if !db.Migrator().HasTable(&Message{}) {
-		if err := db.Migrator().CreateTable(&Message{}); err != nil {
-			return nil, fmt.Errorf("create messages table failed: %v", err)
+	// Create or migrate cld_device table
+	if err := db.AutoMigrate(&CldDevice{}); err != nil {
+		return nil, fmt.Errorf("migrate cld_device table failed: %v", err)
+	}
+
+	// Create cld_message table (formerly messages)
+	if !db.Migrator().HasTable(&CldMessage{}) {
+		if err := db.Migrator().CreateTable(&CldMessage{}); err != nil {
+			return nil, fmt.Errorf("create cld_message table failed: %v", err)
 		}
 	}
 
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_conversation_id ON messages(conversation_id)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_receive_time ON messages(receive_time DESC)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON messages(status)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_conversation_exchange ON messages(conversation_id, exchange_number)`)
+	// Create indexes for cld_message
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_conversation_id ON cld_message(conversation_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_receive_time ON cld_message(receive_time DESC)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_status ON cld_message(status)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_conversation_exchange ON cld_message(conversation_id, exchange_number)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_device_id ON cld_message(device_id)`)
 
 	log.Println("Database initialized successfully")
 	return &Database{DB: db}, nil
@@ -272,7 +304,7 @@ func (d *Database) GetAllConversations() ([]ConversationInfo, error) {
 			MAX(request) as last_message,
 			MAX(receive_time) as updated_at,
 			COUNT(*) as message_count
-		FROM messages
+		FROM cld_message
 		GROUP BY conversation_id
 		ORDER BY MAX(receive_time) DESC
 	`).Scan(&results).Error
@@ -304,4 +336,70 @@ func (d *Database) GetAllAPIs() ([]APIInfo, error) {
 		{"/chat/dialogue/http", "对话聊天接口", "POST"},
 	}
 	return apis, nil
+}
+
+// Device management methods
+
+// GetOrCreateDevice retrieves an existing device or creates a new one
+func (d *Database) GetOrCreateDevice(deviceID string, platform string) (*CldDevice, error) {
+	var device CldDevice
+	err := d.Where("device_id = ?", deviceID).First(&device).Error
+	if err == nil {
+		if platform != "" && device.Platform != platform {
+			d.Model(&device).Update("platform", platform)
+			device.Platform = platform
+		}
+		return &device, nil
+	}
+	device = CldDevice{
+		DeviceID:  deviceID,
+		Platform:  platform,
+		FirstSeen: time.Now(),
+		IsBanned:  false,
+	}
+	if err := d.Create(&device).Error; err != nil {
+		return nil, err
+	}
+	return &device, nil
+}
+
+// IsDeviceBanned checks if a device is banned
+func (d *Database) IsDeviceBanned(deviceID string) (bool, string, error) {
+	var device CldDevice
+	err := d.Where("device_id = ?", deviceID).First(&device).Error
+	if err != nil {
+		// Device not found, not banned
+		return false, "", nil
+	}
+	return device.IsBanned, device.BanReason, nil
+}
+
+// BanDevice bans a device with a reason
+func (d *Database) BanDevice(deviceID string, reason string) error {
+	return d.Model(&CldDevice{}).Where("device_id = ?", deviceID).Updates(map[string]interface{}{
+		"is_banned":  true,
+		"ban_reason": reason,
+	}).Error
+}
+
+// UnbanDevice removes a ban from a device
+func (d *Database) UnbanDevice(deviceID string) error {
+	return d.Model(&CldDevice{}).Where("device_id = ?", deviceID).Updates(map[string]interface{}{
+		"is_banned":  false,
+		"ban_reason": "",
+	}).Error
+}
+
+// GetAllDevices retrieves all devices
+func (d *Database) GetAllDevices() ([]CldDevice, error) {
+	var devices []CldDevice
+	err := d.Order("first_seen DESC").Find(&devices).Error
+	return devices, err
+}
+
+// GetBannedDevices retrieves all banned devices
+func (d *Database) GetBannedDevices() ([]CldDevice, error) {
+	var devices []CldDevice
+	err := d.Where("is_banned = ?", true).Order("updated_at DESC").Find(&devices).Error
+	return devices, err
 }

@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+@theme {
+    --color-chat-bg: #050505;
+    --color-sidebar-bg: #0d0d0d;
+    --color-input-bg: #222222;
+    --color-btn-primary: #166d3b;
+    --color-btn-hover: #1a8548;
+    --color-message-user: #166d3b;
+    --color-message-ai: #222222;
+}
+
+html {
+    background-color: #050505;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    -webkit-text-size-adjust: 100%;
+}
+
+#app {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+.h-dvh {
+    height: 100dvh;
+}
+
+.safe-area-top {
+    padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-left {
+    padding-left: env(safe-area-inset-left);
+}
+
+.safe-area-all {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.touch-manipulation {
+    touch-action: manipulation;
+}
+
+.overscroll-contain {
+    overscroll-behavior: contain;
+}
+
+::-webkit-scrollbar {
+    display: none;
+}
+
+* {
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-width: none;
+}
+
+input, textarea {
+    font-size: 16px;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-enter {
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+
+.typing-dot {
+    animation: blink 1.4s infinite both;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+.prose {
+    color: #d4d4d8;
+    line-height: 1.6;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+    color: #fafafa;
+    font-weight: 600;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+.prose h1 { font-size: 1.25em; }
+.prose h2 { font-size: 1.125em; }
+.prose h3 { font-size: 1em; }
+
+.prose p {
+    margin-bottom: 0.75em;
+}
+
+.prose ul, .prose ol {
+    padding-left: 1.25em;
+    margin-bottom: 0.75em;
+}
+
+.prose li {
+    margin-bottom: 0.25em;
+}
+
+.prose code {
+    background-color: #3f3f46;
+    padding: 0.125em 0.375em;
+    border-radius: 0.25em;
+    font-size: 0.875em;
+}
+
+.prose pre {
+    background-color: #27272a;
+    padding: 0.75em 1em;
+    border-radius: 0.5em;
+    overflow-x: auto;
+    margin-bottom: 0.75em;
+}
+
+.prose pre code {
+    background: none;
+    padding: 0;
+}
+
+.prose a {
+    color: #166d3b;
+    text-decoration: underline;
+}
+
+.prose blockquote {
+    border-left: 3px solid #3f3f46;
+    padding-left: 1em;
+    margin-left: 0;
+    color: #a1a1aa;
+}
+
+.prose strong {
+    color: #fafafa;
+    font-weight: 600;
+}
+
+.prose hr {
+    border: none;
+    border-top: 1px solid #3f3f46;
+    margin: 1em 0;
+}

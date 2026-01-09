@@ -1,0 +1,448 @@
+<script lang="ts" setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { marked } from 'marked'
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { open } from '@tauri-apps/plugin-shell'
+import Sidebar from './components/Sidebar.vue'
+import ChatWindow from './components/ChatWindow.vue'
+import Modal from './components/Modal.vue'
+import { useChat } from './composables/useChat'
+import type { UpdateCheckResult } from './types'
+import { noticeContent as staticNoticeContent } from '../../shared/notice'
+
+const {
+  conversations,
+  currentConversationId,
+  messages,
+  isConnected,
+  isConnecting,
+  isLoading,
+  error,
+  usageStatus,
+  usageBlocked,
+  usageBlockMessage,
+  serverUnavailable,
+  reconnectAttempts,
+  initialize,
+  cleanup,
+  sendMessage,
+  selectConversation,
+  newConversation,
+  reconnect,
+  clearError,
+  renameConversation,
+  deleteConversation
+} = useChat()
+
+// Update dialog state
+const showUpdateDialog = ref(false)
+const updateInfo = ref<UpdateCheckResult | null>(null)
+const currentVersion = ref('')
+
+// Connection error dialog state
+const showConnectionErrorDialog = ref(false)
+
+// Device banned dialog state
+const showBannedDialog = ref(false)
+const bannedReason = ref('')
+
+// Version outdated dialog state
+const showVersionOutdatedDialog = ref(false)
+const outdatedVersionInfo = ref<{ current_version: string; required_version: string; message: string } | null>(null)
+
+// Notice dialog state
+const showNoticeDialog = ref(false)
+const noticeContent = ref(staticNoticeContent)
+
+// Usage blocked dialog visibility
+const showUsageBlockedDialog = ref(true)
+
+// Server unavailable dialog visibility
+const showServerUnavailableDialog = ref(true)
+
+// Event unlisteners
+let connectionErrorUnlisten: UnlistenFn | null = null
+let deviceBannedUnlisten: UnlistenFn | null = null
+let versionOutdatedUnlisten: UnlistenFn | null = null
+
+// Computed property for rendered markdown
+const renderedNotice = computed(() => {
+  if (!noticeContent.value) return ''
+  return marked(noticeContent.value) as string
+})
+const renderedBannedReason = computed(() => {
+  if (!bannedReason.value) return ''
+  return marked(bannedReason.value) as string
+})
+const sendDisabled = computed(() => showBannedDialog.value || usageBlocked.value || showVersionOutdatedDialog.value || serverUnavailable.value)
+
+// Open download URL in browser
+async function openDownloadPage() {
+  if (updateInfo.value?.download_url) {
+    await open(updateInfo.value.download_url)
+  }
+}
+
+function checkNotice() {
+  if (staticNoticeContent && staticNoticeContent.trim()) {
+    showNoticeDialog.value = true
+  }
+}
+
+function handleNoticeConfirm() {
+  showNoticeDialog.value = false
+}
+
+async function checkForUpdates() {
+  try {
+    currentVersion.value = await invoke<string>('get_current_version')
+    const result = await invoke<UpdateCheckResult>('check_for_update')
+    if (result.has_update) {
+      updateInfo.value = result
+      showUpdateDialog.value = true
+    }
+  } catch (e) {
+    console.error('Failed to check for updates:', e)
+  }
+}
+
+function handleUpdateConfirm() {
+  showUpdateDialog.value = false
+}
+
+function handleConnectionErrorConfirm() {
+  showConnectionErrorDialog.value = false
+}
+
+onMounted(async () => {
+  initialize()
+  checkNotice()
+  checkForUpdates()
+
+  // Listen for connection errors
+  connectionErrorUnlisten = await listen<string>('connection_error', (event) => {
+    const err = event.payload
+    // Show special dialog for server connection failure
+    if (err.includes('claude.nixdorfer.com') || err.includes('连接失败') || err.includes('dial')) {
+      showConnectionErrorDialog.value = true
+    }
+  })
+
+  // Listen for device banned event
+  deviceBannedUnlisten = await listen<{ reason?: string }>('device_banned', (event) => {
+    bannedReason.value = event.payload.reason || '您的设备已被封禁'
+    showBannedDialog.value = true
+  })
+
+  // Listen for version outdated event
+  versionOutdatedUnlisten = await listen<{ current_version: string; required_version: string; message: string }>('version_outdated', async (event) => {
+    outdatedVersionInfo.value = event.payload
+    showVersionOutdatedDialog.value = true
+    await checkForUpdates()
+  })
+})
+
+onUnmounted(() => {
+  cleanup()
+  if (connectionErrorUnlisten) {
+    connectionErrorUnlisten()
+  }
+  if (deviceBannedUnlisten) {
+    deviceBannedUnlisten()
+  }
+  if (versionOutdatedUnlisten) {
+    versionOutdatedUnlisten()
+  }
+})
+
+function handleSend(message: string) {
+  sendMessage(message)
+}
+
+function handleSelectConversation(id: string) {
+  selectConversation(id)
+}
+
+function handleRename(id: string, name: string) {
+  renameConversation(id, name)
+}
+
+function handleDelete(id: string) {
+  deleteConversation(id)
+}
+</script>
+
+<template>
+  <div class="flex h-screen bg-chat-bg text-white">
+    <Sidebar
+      :conversations="conversations"
+      :current-id="currentConversationId"
+      :is-connected="isConnected"
+      :is-connecting="isConnecting"
+      :reconnect-attempts="reconnectAttempts"
+      :usage-status="usageStatus"
+      :usage-blocked="usageBlocked"
+      :usage-block-message="usageBlockMessage"
+      :version="currentVersion"
+      @select="handleSelectConversation"
+      @new-chat="newConversation"
+      @reconnect="reconnect"
+      @rename="handleRename"
+      @delete="handleDelete"
+    />
+
+    <ChatWindow
+      :messages="messages"
+      :is-loading="isLoading"
+      :is-connected="isConnected"
+      :error="error"
+      :send-disabled="sendDisabled"
+      @send="handleSend"
+      @clear-error="clearError"
+    />
+
+    <!-- Update Available Dialog -->
+    <Modal
+      :show="showUpdateDialog"
+      title="发现新版本"
+      confirm-text="知道了"
+      :show-cancel="false"
+      type="info"
+      @confirm="handleUpdateConfirm"
+      @cancel="handleUpdateConfirm"
+    >
+      <div class="space-y-4">
+        <div class="flex items-center gap-4 text-sm">
+          <div class="text-zinc-400">
+            当前版本: <span class="text-zinc-200">{{ updateInfo?.current_version }}</span>
+          </div>
+          <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+          </svg>
+          <div class="text-zinc-400">
+            最新版本: <span class="text-btn-primary font-medium">{{ updateInfo?.latest_version }}</span>
+          </div>
+        </div>
+
+        <div class="bg-zinc-800/50 rounded-lg p-4">
+          <h4 class="text-sm font-medium text-zinc-300 mb-2">更新内容:</h4>
+          <ul class="space-y-1">
+            <li
+              v-for="(note, index) in updateInfo?.notes"
+              :key="index"
+              class="text-sm text-zinc-400 flex items-start gap-2"
+            >
+              <span class="text-btn-primary mt-1">-</span>
+              <span>{{ note }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="updateInfo?.download_url" class="pt-2">
+          <button
+            @click="openDownloadPage"
+            class="w-full py-2 px-4 bg-btn-primary hover:bg-btn-hover text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            前往下载页面
+          </button>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- Connection Error Dialog -->
+    <Modal
+      :show="showConnectionErrorDialog"
+      title="连接失败"
+      confirm-text="知道了"
+      :show-cancel="false"
+      type="error"
+      @confirm="handleConnectionErrorConfirm"
+      @cancel="handleConnectionErrorConfirm"
+    >
+      <div class="space-y-4">
+        <p class="text-zinc-300">
+          无法连接至服务器，服务器可能已经关闭。
+        </p>
+        <div class="bg-zinc-800/50 rounded-lg p-4">
+          <p class="text-sm text-zinc-400 mb-2">请联系系统管理员:</p>
+          <div class="space-y-1 text-sm">
+            <p class="text-zinc-300">Discord / Telegram / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>
+          </div>
+        </div>
+      </div>
+    </Modal>
+
+    <!-- Notice Dialog -->
+    <Modal
+      :show="showNoticeDialog"
+      title="公告"
+      confirm-text="确定"
+      :show-cancel="false"
+      type="info"
+      @confirm="handleNoticeConfirm"
+      @cancel="handleNoticeConfirm"
+    >
+      <div class="prose prose-invert prose-sm max-w-none" v-html="renderedNotice"></div>
+    </Modal>
+
+    <!-- Version Outdated Dialog - Unclosable -->
+    <div
+      v-if="showVersionOutdatedDialog"
+      class="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center"
+    >
+      <div class="bg-zinc-900 border border-orange-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center">
+            <svg class="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-orange-500">版本已过时</h2>
+        </div>
+        <div class="space-y-4">
+          <p class="text-zinc-300">
+            {{ outdatedVersionInfo?.message }}
+          </p>
+          <div class="bg-zinc-800/50 rounded-lg p-4">
+            <div class="flex items-center gap-4 text-sm mb-3">
+              <div class="text-zinc-400">
+                当前版本: <span class="text-zinc-200">{{ outdatedVersionInfo?.current_version }}</span>
+              </div>
+              <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+              <div class="text-zinc-400">
+                最低要求: <span class="text-orange-400 font-medium">{{ outdatedVersionInfo?.required_version }}</span>
+              </div>
+            </div>
+            <p class="text-sm text-zinc-400">请下载最新版本后重新打开应用</p>
+          </div>
+          <div v-if="updateInfo?.download_url" class="pt-2">
+            <button
+              @click="openDownloadPage"
+              class="w-full py-2 px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              前往下载页面
+            </button>
+          </div>
+          <p class="text-xs text-zinc-500 text-center">
+            此窗口无法关闭
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Device Banned Dialog - Closable -->
+    <div
+      v-if="showBannedDialog"
+      class="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
+      @click.self="showBannedDialog = false"
+    >
+      <div class="bg-zinc-900 border border-red-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+            <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-red-500">设备已被封禁</h2>
+        </div>
+        <div class="space-y-4">
+          <div class="bg-zinc-800/50 rounded-lg p-4">
+            <p class="text-sm text-zinc-400 mb-2">管理员留言:</p>
+            <div class="text-zinc-300 prose prose-sm prose-invert max-w-none" v-html="renderedBannedReason"></div>
+          </div>
+          <div class="bg-zinc-800/50 rounded-lg p-4">
+            <p class="text-sm text-zinc-400 mb-2">如有疑问请联系管理员:</p>
+            <div class="space-y-1 text-sm">
+              <p class="text-zinc-300">Discord / Telegram / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>
+            </div>
+          </div>
+          <button
+            class="w-full py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm text-zinc-300"
+            @click="showBannedDialog = false"
+          >
+            关闭 (仅可查看历史对话)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage Blocked Dialog - Closable -->
+    <div
+      v-if="usageBlocked && showUsageBlockedDialog"
+      class="fixed inset-0 z-[9998] bg-black/90 flex items-center justify-center"
+      @click.self="showUsageBlockedDialog = false"
+    >
+      <div class="bg-zinc-900 border border-orange-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center">
+            <svg class="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-orange-500">已超过管理员设定用量</h2>
+        </div>
+        <div class="space-y-4">
+          <p class="text-zinc-300 whitespace-pre-line">
+            {{ usageBlockMessage }}
+          </p>
+          <div class="bg-zinc-800/50 rounded-lg p-4">
+            <p class="text-sm text-zinc-400 mb-2">如有疑问请联系管理员:</p>
+            <div class="space-y-1 text-sm">
+              <p class="text-zinc-300">Discord / Telegram / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>
+            </div>
+          </div>
+          <button
+            class="w-full py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm text-zinc-300"
+            @click="showUsageBlockedDialog = false"
+          >
+            关闭 (仅可查看历史对话)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server Unavailable Dialog -->
+    <div
+      v-if="serverUnavailable && showServerUnavailableDialog"
+      class="fixed inset-0 z-[9997] bg-black/90 flex items-center justify-center"
+      @click.self="showServerUnavailableDialog = false"
+    >
+      <div class="bg-zinc-900 border border-red-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+            <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-red-500">服务器暂时不可用</h2>
+        </div>
+        <div class="space-y-4">
+          <p class="text-zinc-300">
+            服务器暂时关闭或遇到异常，请稍后再试。
+          </p>
+          <div class="bg-zinc-800/50 rounded-lg p-4">
+            <p class="text-sm text-zinc-400 mb-2">如有疑问请联系管理员:</p>
+            <div class="space-y-1 text-sm">
+              <p class="text-zinc-300">Telegram / Discord / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>
+            </div>
+          </div>
+          <button
+            class="w-full py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm text-zinc-300"
+            @click="showServerUnavailableDialog = false"
+          >
+            关闭 (仅可查看历史对话)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>

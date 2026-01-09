@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -736,6 +737,28 @@ func (h *Handler) GetUsage(c *gin.Context) {
 	c.JSON(http.StatusOK, usage)
 }
 
+func (h *Handler) CheckDeviceStatus(c *gin.Context) {
+	deviceID := c.Query("device_id")
+	if deviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id required"})
+		return
+	}
+	platform := c.Query("platform")
+	_, err := h.db.GetOrCreateDevice(deviceID, platform)
+	if err != nil {
+		log.Printf("Failed to register device %s: %v", deviceID, err)
+	}
+	isBanned, banReason, _ := h.db.IsDeviceBanned(deviceID)
+	usage := getUsage()
+	c.JSON(http.StatusOK, gin.H{
+		"is_banned":        isBanned,
+		"ban_reason":       banReason,
+		"is_blocked":       usage["is_blocked"],
+		"block_reason":     usage["block_reason"],
+		"block_reset_time": usage["block_reset_time"],
+	})
+}
+
 func getUsage() map[string]interface{} {
 	url := fmt.Sprintf("https://claude.ai/api/organizations/%s/usage", globalConfig.GetOrganizationID())
 
@@ -752,8 +775,15 @@ func getUsage() map[string]interface{} {
 	}
 
 	req.Header.Set("Cookie", globalConfig.GetCookie())
-	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-client-platform", "web_claude_ai")
+	req.Header.Set("anthropic-client-version", "1.0.0")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
+	req.Header.Set("Referer", "https://claude.ai/")
 
 	client := globalConfig.CreateHTTPClient(10 * time.Second)
 	resp, err := client.Do(req)
@@ -782,22 +812,13 @@ func getUsage() map[string]interface{} {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var usageData struct {
-		FiveHour struct {
-			Utilization float64    `json:"utilization"`
-			ResetsAt    *time.Time `json:"resets_at"`
-		} `json:"five_hour"`
-		SevenDay struct {
-			Utilization float64    `json:"utilization"`
-			ResetsAt    *time.Time `json:"resets_at"`
-		} `json:"seven_day"`
-		SevenDayOpus struct {
-			Utilization float64    `json:"utilization"`
-			ResetsAt    *time.Time `json:"resets_at"`
-		} `json:"seven_day_opus"`
-	}
+	// 调试日志：打印原始响应
+	log.Printf("[Usage API] Raw response: %s", string(body))
 
-	if err := json.Unmarshal(body, &usageData); err != nil {
+	// 首先解析为通用 map 来查看实际结构
+	var rawData map[string]interface{}
+	if err := json.Unmarshal(body, &rawData); err != nil {
+		log.Printf("[Usage API] Failed to parse as map: %v", err)
 		return map[string]interface{}{
 			"five_hour_utilization":      0,
 			"five_hour_resets_at":        nil,
@@ -808,14 +829,146 @@ func getUsage() map[string]interface{} {
 		}
 	}
 
-	return map[string]interface{}{
-		"five_hour_utilization":      int(usageData.FiveHour.Utilization),
-		"five_hour_resets_at":        usageData.FiveHour.ResetsAt,
-		"seven_day_utilization":      int(usageData.SevenDay.Utilization),
-		"seven_day_resets_at":        usageData.SevenDay.ResetsAt,
-		"seven_day_opus_utilization": int(usageData.SevenDayOpus.Utilization),
-		"seven_day_opus_resets_at":   usageData.SevenDayOpus.ResetsAt,
+	// 打印解析后的结构
+	log.Printf("[Usage API] Parsed data keys: %v", getMapKeys(rawData))
+
+	// 尝试多种可能的字段名结构
+	result := map[string]interface{}{
+		"five_hour_utilization":      0,
+		"five_hour_resets_at":        nil,
+		"seven_day_utilization":      0,
+		"seven_day_resets_at":        nil,
+		"seven_day_opus_utilization": 0,
+		"seven_day_opus_resets_at":   nil,
 	}
+
+	// 解析 daily/five_hour 数据
+	if daily, ok := rawData["daily"].(map[string]interface{}); ok {
+		if val, ok := daily["usage"].(float64); ok {
+			result["five_hour_utilization"] = int(val * 100)
+		} else if val, ok := daily["utilization"].(float64); ok {
+			result["five_hour_utilization"] = int(val)
+		}
+		if resetAt, ok := daily["resets_at"].(string); ok {
+			result["five_hour_resets_at"] = resetAt
+		} else if resetAt, ok := daily["reset_at"].(string); ok {
+			result["five_hour_resets_at"] = resetAt
+		}
+	} else if fiveHour, ok := rawData["five_hour"].(map[string]interface{}); ok {
+		if val, ok := fiveHour["usage"].(float64); ok {
+			result["five_hour_utilization"] = int(val * 100)
+		} else if val, ok := fiveHour["utilization"].(float64); ok {
+			result["five_hour_utilization"] = int(val)
+		}
+		if resetAt, ok := fiveHour["resets_at"].(string); ok {
+			result["five_hour_resets_at"] = resetAt
+		} else if resetAt, ok := fiveHour["reset_at"].(string); ok {
+			result["five_hour_resets_at"] = resetAt
+		}
+	}
+
+	// 解析 monthly/seven_day 数据
+	if monthly, ok := rawData["monthly"].(map[string]interface{}); ok {
+		if val, ok := monthly["usage"].(float64); ok {
+			result["seven_day_utilization"] = int(val * 100)
+		} else if val, ok := monthly["utilization"].(float64); ok {
+			result["seven_day_utilization"] = int(val)
+		}
+		if resetAt, ok := monthly["resets_at"].(string); ok {
+			result["seven_day_resets_at"] = resetAt
+		} else if resetAt, ok := monthly["reset_at"].(string); ok {
+			result["seven_day_resets_at"] = resetAt
+		}
+	} else if sevenDay, ok := rawData["seven_day"].(map[string]interface{}); ok {
+		if val, ok := sevenDay["usage"].(float64); ok {
+			result["seven_day_utilization"] = int(val * 100)
+		} else if val, ok := sevenDay["utilization"].(float64); ok {
+			result["seven_day_utilization"] = int(val)
+		}
+		if resetAt, ok := sevenDay["resets_at"].(string); ok {
+			result["seven_day_resets_at"] = resetAt
+		} else if resetAt, ok := sevenDay["reset_at"].(string); ok {
+			result["seven_day_resets_at"] = resetAt
+		}
+	}
+
+	// 解析 seven_day_opus 数据
+	if sevenDayOpus, ok := rawData["seven_day_opus"].(map[string]interface{}); ok {
+		if val, ok := sevenDayOpus["usage"].(float64); ok {
+			result["seven_day_opus_utilization"] = int(val * 100)
+		} else if val, ok := sevenDayOpus["utilization"].(float64); ok {
+			result["seven_day_opus_utilization"] = int(val)
+		}
+		if resetAt, ok := sevenDayOpus["resets_at"].(string); ok {
+			result["seven_day_opus_resets_at"] = resetAt
+		} else if resetAt, ok := sevenDayOpus["reset_at"].(string); ok {
+			result["seven_day_opus_resets_at"] = resetAt
+		}
+	}
+
+	log.Printf("[Usage API] Final result: %v", result)
+
+	// Check usage limits and add blocked status if exceeded
+	fiveHourUtil := 0
+	sevenDayUtil := 0
+
+	if val, ok := result["five_hour_utilization"].(int); ok {
+		fiveHourUtil = val
+	}
+	if val, ok := result["seven_day_utilization"].(int); ok {
+		sevenDayUtil = val
+	}
+
+	// Check if usage exceeds configured limits
+	isBlocked := false
+	blockReason := ""
+	blockResetTime := ""
+
+	if globalConfig.UsageLimitFiveHour > 0 && fiveHourUtil >= globalConfig.UsageLimitFiveHour {
+		isBlocked = true
+		blockReason = fmt.Sprintf("5小时用量已达 %d%%/%d%%", fiveHourUtil, globalConfig.UsageLimitFiveHour)
+		if resetAt, ok := result["five_hour_resets_at"].(string); ok && resetAt != "" {
+			blockResetTime = resetAt
+		}
+	}
+
+	if globalConfig.UsageLimitSevenDay > 0 && sevenDayUtil >= globalConfig.UsageLimitSevenDay {
+		isBlocked = true
+		if blockReason != "" {
+			blockReason += "\n"
+		}
+		blockReason += fmt.Sprintf("7天用量已达 %d%%/%d%%", sevenDayUtil, globalConfig.UsageLimitSevenDay)
+		// Use the later reset time if both limits are exceeded
+		if resetAt, ok := result["seven_day_resets_at"].(string); ok && resetAt != "" {
+			if blockResetTime == "" {
+				blockResetTime = resetAt
+			} else {
+				// Compare reset times and use the later one
+				if resetAt > blockResetTime {
+					blockResetTime = resetAt
+				}
+			}
+		}
+	}
+
+	result["is_blocked"] = isBlocked
+	result["block_reason"] = blockReason
+	result["block_reset_time"] = blockResetTime
+
+	if isBlocked {
+		log.Printf("[Usage API] User is BLOCKED - Reason: %s, Reset at: %s", blockReason, blockResetTime)
+	}
+
+	return result
+}
+
+// 获取 map 的所有 key
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func getStats() map[string]interface{} {

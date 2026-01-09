@@ -148,6 +148,7 @@ func SetupRouter(cfg *Config, db *Database) *gin.Engine {
 
 	api.GET("/usage", handler.GetUsage)
 	api.GET("/stats", handler.GetStats)
+	api.GET("/device/status", handler.CheckDeviceStatus)
 
 	return r
 }

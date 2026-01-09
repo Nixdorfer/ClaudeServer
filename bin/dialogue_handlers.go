@@ -12,10 +12,34 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// checkUsageLimits checks if usage exceeds configured limits
+// Returns (isBlocked, blockReason, blockResetTime)
+func checkUsageLimits() (bool, string, string) {
+	usage := getUsage()
+
+	isBlocked, _ := usage["is_blocked"].(bool)
+	blockReason, _ := usage["block_reason"].(string)
+	blockResetTime, _ := usage["block_reset_time"].(string)
+
+	return isBlocked, blockReason, blockResetTime
+}
+
 func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 	var req DialogueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// Check usage limits before processing
+	if isBlocked, blockReason, blockResetTime := checkUsageLimits(); isBlocked {
+		log.Printf("[Usage Limit] Request blocked - Reason: %s, Reset: %s", blockReason, blockResetTime)
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":            "Usage limit exceeded",
+			"block_reason":     blockReason,
+			"block_reset_time": blockResetTime,
+			"is_blocked":       true,
+		})
 		return
 	}
 
@@ -234,6 +258,18 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 
 	if req.Request == "" {
 		sendWSError(conn, "Request cannot be empty")
+		return
+	}
+
+	// Check usage limits before processing
+	if isBlocked, blockReason, blockResetTime := checkUsageLimits(); isBlocked {
+		log.Printf("[Usage Limit] WebSocket request blocked - Reason: %s, Reset: %s", blockReason, blockResetTime)
+		sendWSMessage(conn, "usage_blocked", map[string]interface{}{
+			"error":            "Usage limit exceeded",
+			"block_reason":     blockReason,
+			"block_reset_time": blockResetTime,
+			"is_blocked":       true,
+		})
 		return
 	}
 
@@ -459,6 +495,18 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 		return
 	}
 
+	// Check usage limits before processing
+	if isBlocked, blockReason, blockResetTime := checkUsageLimits(); isBlocked {
+		log.Printf("[Usage Limit] SSE request blocked - Reason: %s, Reset: %s", blockReason, blockResetTime)
+		sendSSEEvent(c.Writer, flusher, "usage_blocked", map[string]interface{}{
+			"error":            "Usage limit exceeded",
+			"block_reason":     blockReason,
+			"block_reset_time": blockResetTime,
+			"is_blocked":       true,
+		})
+		return
+	}
+
 	if globalMCPSessionManager != nil {
 		if err := globalMCPSessionManager.EnsureInitialized(); err != nil {
 			log.Printf("⚠️ MCP initialization failed (continuing without MCP): %v", err)
@@ -594,6 +642,45 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
+	deviceID := c.Request.Header.Get("X-Device-ID")
+	if deviceID == "" {
+		deviceID = c.Query("device_id")
+	}
+	platform := c.Request.Header.Get("X-Platform")
+	if platform == "" {
+		platform = c.Query("platform")
+	}
+	clientVersion := c.Request.Header.Get("X-Client-Version")
+	if h.config.MinClientVersion != "" && clientVersion != "" {
+		if !CompareVersions(clientVersion, h.config.MinClientVersion) {
+			sendWSMessage(conn, "version_outdated", map[string]interface{}{
+				"current_version":  clientVersion,
+				"required_version": h.config.MinClientVersion,
+				"message":          "当前版本已过时，无法继续使用，请更新到最新版本",
+			})
+			log.Printf("Outdated client version: %s (required: %s)", clientVersion, h.config.MinClientVersion)
+			return
+		}
+	}
+	if deviceID != "" {
+		_, err := h.db.GetOrCreateDevice(deviceID, platform)
+		if err != nil {
+			log.Printf("Failed to register device %s: %v", deviceID, err)
+		}
+		isBanned, banReason, err := h.db.IsDeviceBanned(deviceID)
+		if err != nil {
+			log.Printf("Failed to check device ban status: %v", err)
+		}
+		if isBanned {
+			sendWSMessage(conn, "banned", map[string]interface{}{
+				"banned": true,
+				"reason": banReason,
+			})
+			log.Printf("Banned device attempted connection: %s", deviceID)
+			return
+		}
+	}
+	c.Set("device_id", deviceID)
 
 	// 设置 pong 处理器，收到 pong 时更新读取截止时间
 	conn.SetPongHandler(func(appData string) error {
@@ -613,7 +700,7 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 		"message": "WebSocket connection established",
 	})
 
-	log.Printf("WebSocket连接已建立: %s", c.Request.RemoteAddr)
+	log.Printf("WebSocket连接已建立: %s (device: %s)", c.Request.RemoteAddr, deviceID)
 
 	// 启动心跳 goroutine
 	done := make(chan struct{})
@@ -683,10 +770,35 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]i
 	conversationID, _ := data["conversation_id"].(string)
 	model, _ := data["model"].(string)
 	style, _ := data["style"].(string)
+	deviceID, _ := data["device_id"].(string)
 
 	if request == "" {
 		sendWSError(conn, "Request cannot be empty")
 		return
+	}
+
+	// Check usage limits before processing
+	if isBlocked, blockReason, blockResetTime := checkUsageLimits(); isBlocked {
+		log.Printf("[Usage Limit] Persistent WebSocket request blocked - Reason: %s, Reset: %s", blockReason, blockResetTime)
+		sendWSMessage(conn, "usage_blocked", map[string]interface{}{
+			"error":            "Usage limit exceeded",
+			"block_reason":     blockReason,
+			"block_reset_time": blockResetTime,
+			"is_blocked":       true,
+		})
+		return
+	}
+
+	// Check device ban status before processing request
+	if deviceID != "" {
+		isBanned, banReason, _ := h.db.IsDeviceBanned(deviceID)
+		if isBanned {
+			sendWSMessage(conn, "banned", map[string]interface{}{
+				"banned": true,
+				"reason": banReason,
+			})
+			return
+		}
 	}
 
 	if globalMCPSessionManager != nil {
@@ -734,6 +846,7 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]i
 
 	dbMsg := &Message{
 		ConversationID: conversationID,
+		DeviceID:       deviceID,
 		ExchangeNumber: exchangeNum,
 		Request:        request,
 		ReceiveTime:    receiveTime,

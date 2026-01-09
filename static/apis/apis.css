@@ -1,0 +1,462 @@
+/* 子菜单样式 */
+.nav-item-collapsible .collapse-icon {
+    float: right;
+    transition: transform 0.3s;
+    font-size: 12px;
+}
+
+.sub-menu {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    padding-left: 20px;
+}
+
+.sub-menu.open {
+    max-height: 200px;
+}
+
+.sub-nav-item {
+    list-style: none;
+    margin: 5px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sub-nav-item:hover {
+    background: var(--hover-bg);
+    border-radius: 4px;
+}
+
+.sub-nav-item.active {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.sub-nav-link {
+    display: block;
+    padding: 8px 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.sub-nav-item.active .sub-nav-link {
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+/* API 分类介绍 */
+.api-intro {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    border-left: 4px solid var(--accent-color);
+}
+
+.api-intro h2 {
+    margin: 0 0 10px 0;
+    color: var(--text-primary);
+    font-size: 20px;
+}
+
+.api-intro p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+/* API 卡片网格容器 */
+.api-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+/* 紧凑型API卡片（类似仪表盘统计卡片） */
+.api-card-compact {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    border: 2px solid transparent;
+    display: flex;
+    flex-direction: column;
+    min-height: 140px;
+}
+
+.api-card-compact:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    border-color: var(--accent-color);
+}
+
+.api-card-header-compact {
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.api-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.api-path-compact {
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: var(--accent-color);
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+
+.api-description-compact {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* API 卡片容器（旧版，保留兼容性） */
+.api-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+/* API 卡片样式 */
+.api-card {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    transition: all 0.3s;
+    overflow: hidden;
+}
+
+.api-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.api-card-summary {
+    padding: 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.api-card-summary:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.api-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.api-main-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.api-card-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.method {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.method.get {
+    background: #4CAF50;
+    color: white;
+}
+
+.method.post {
+    background: #2196F3;
+    color: white;
+}
+
+.method.delete {
+    background: #f44336;
+    color: white;
+}
+
+.method.put {
+    background: #FF9800;
+    color: white;
+}
+
+.method.patch {
+    background: #9C27B0;
+    color: white;
+}
+
+.method.ws {
+    background: #9C27B0;
+    color: white;
+}
+
+.path {
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: var(--accent-color);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.api-description {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+}
+
+.expand-icon {
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: transform 0.3s;
+    user-select: none;
+}
+
+/* API 详情部分 */
+.api-card-detail {
+    background: var(--bg-primary);
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.detail-section {
+    margin-bottom: 20px;
+}
+
+.detail-section:last-child {
+    margin-bottom: 0;
+}
+
+.detail-section h4 {
+    color: var(--text-primary);
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.api-details {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    margin-top: 0;
+}
+
+.api-details.open {
+    max-height: 2000px;
+    margin-top: 15px;
+}
+
+/* API简介部分 */
+.api-intro {
+    background: var(--bg-secondary);
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--accent-color);
+}
+
+.api-intro p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* 参数表格 */
+.params-section {
+    margin-bottom: 20px;
+}
+
+.params-section h4 {
+    color: var(--text-primary);
+    margin: 0 0 10px 0;
+    font-size: 14px;
+}
+
+.params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.params-table th,
+.params-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.params-table th {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.params-table td {
+    color: var(--text-secondary);
+}
+
+.params-table code {
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--accent-color);
+}
+
+.required {
+    color: #f44336;
+    font-weight: 500;
+}
+
+.optional {
+    color: var(--text-tertiary);
+}
+
+/* 示例部分 */
+.example-section {
+    margin-bottom: 20px;
+}
+
+.example-section h4 {
+    color: var(--text-primary);
+    margin: 0 0 10px 0;
+    font-size: 14px;
+}
+
+.code-block {
+    position: relative;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+.code-block pre {
+    margin: 0;
+    overflow-x: auto;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.code-block code {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.copy-btn:hover {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+.copy-btn.copied {
+    background: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
+/* API详情模态框 */
+.api-detail-content {
+    padding: 20px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.api-detail-content .detail-section {
+    margin-bottom: 20px;
+}
+
+.api-detail-content .detail-section:last-child {
+    margin-bottom: 0;
+}
+
+.api-detail-content .detail-section h3 {
+    color: var(--text-primary);
+    margin: 0 0 10px 0;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.api-detail-content .detail-section .content {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.api-detail-content .detail-section code {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--accent-color);
+}
+
+.api-detail-content .detail-section .code-block {
+    background: var(--bg-tertiary);
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.api-detail-content .detail-section pre {
+    margin: 0;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+    .api-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .api-card-compact {
+        min-height: 120px;
+    }
+}

@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+    --color-chat-bg: #050505;
+    --color-sidebar-bg: #0d0d0d;
+    --color-input-bg: #222222;
+    --color-btn-primary: #166d3b;
+    --color-btn-hover: #1a8548;
+    --color-message-user: #166d3b;
+    --color-message-ai: #222222;
+}
+
+html {
+    background-color: #050505;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+}
+
+#app {
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #444444;
+}
+
+/* Message animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-enter {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Typing indicator */
+@keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+
+.typing-dot {
+    animation: blink 1.4s infinite both;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}

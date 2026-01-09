@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - Claude API</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/shared/common.css">
+    <link rel="stylesheet" href="/static/dashboard/dashboard.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Claude API</h1>
+            <span class="version">v1.0.0</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="/static/dashboard/dashboard.html" class="nav-link">📊 仪表盘</a></li>
+            <li class="nav-item"><a href="/static/dialogues/dialogues.html" class="nav-link">💬 当前对话</a></li>
+            <li class="nav-item"><a href="/static/history/history.html" class="nav-link">📜 对话记录</a></li>
+            <li class="nav-item"><a href="/static/apis/apis.html" class="nav-link">🔌 API接口</a></li>
+            <li class="nav-item"><a href="/static/changes/changes.html" class="nav-link">📋 版本更新</a></li>
+        </ul>
+        <div class="theme-toggle-container">
+            <label class="theme-toggle">
+                <span class="toggle-label">暗色模式</span>
+                <input type="checkbox" id="themeToggle" checked onchange="toggleTheme()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="warning-banner" id="warningBanner">
+            <h3>⚠️ 服务已停止</h3>
+            <p id="warningMessage"></p>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card processing">
+                <h3>处理中</h3>
+                <div class="value" id="processing">0</div>
+            </div>
+            <div class="stat-card completed">
+                <h3>已完成</h3>
+                <div class="value" id="completed">0</div>
+            </div>
+            <div class="stat-card failed">
+                <h3>失败</h3>
+                <div class="value" id="failed">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>TPM</h3>
+                <div class="value" id="tpm" style="color: #9C27B0;">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>RPM</h3>
+                <div class="value" id="rpm" style="color: #FF9800;">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>RPD</h3>
+                <div class="value" id="rpd" style="color: #00BCD4;">0</div>
+            </div>
+        </div>
+
+        <div class="usage-section">
+            <h2>使用量配额</h2>
+            <div class="usage-cards">
+                <div class="usage-card">
+                    <h3>5小时限额</h3>
+                    <div class="usage-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="fiveHourProgress" style="width: 0%"></div>
+                        </div>
+                        <div class="usage-text">
+                            <span class="usage-value" id="fiveHourValue">0%</span>
+                            <span class="usage-reset" id="fiveHourReset">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="usage-card">
+                    <h3>7天限额</h3>
+                    <div class="usage-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="sevenDayProgress" style="width: 0%"></div>
+                        </div>
+                        <div class="usage-text">
+                            <span class="usage-value" id="sevenDayValue">0%</span>
+                            <span class="usage-reset" id="sevenDayReset">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="usage-card">
+                    <h3>7天Opus限额</h3>
+                    <div class="usage-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="sevenDayOpusProgress" style="width: 0%"></div>
+                        </div>
+                        <div class="usage-text">
+                            <span class="usage-value" id="sevenDayOpusValue">0%</span>
+                            <span class="usage-reset" id="sevenDayOpusReset">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="config">
+            <h2>配置信息</h2>
+            <table class="config-table">
+                <tbody id="configDisplay">
+                    <tr><td colspan="2">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="charts">
+            <div class="chart-card">
+                <h2>Token使用趋势</h2>
+                <div class="time-selector">
+                    <button class="time-btn" onclick="changeTimeRange('1m')">1分钟</button>
+                    <button class="time-btn" onclick="changeTimeRange('10m')">10分钟</button>
+                    <button class="time-btn active" onclick="changeTimeRange('1h')">1小时</button>
+                    <button class="time-btn" onclick="changeTimeRange('1d')">1天</button>
+                    <button class="time-btn" onclick="changeTimeRange('7d')">7天</button>
+                    <button class="time-btn" onclick="changeTimeRange('1w')">1周</button>
+                    <button class="time-btn" onclick="changeTimeRange('30d')">30天</button>
+                    <button class="time-btn" onclick="changeTimeRange('1M')">1月</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="tokenChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h2>请求成功率</h2>
+                <div class="chart-container">
+                    <canvas id="successChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/shared/common.js"></script>
+    <script src="/static/dashboard/dashboard.js"></script>
+</body>
+</html>

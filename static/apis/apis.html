@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API接口 - Claude API</title>
+    <link rel="stylesheet" href="/static/shared/common.css">
+    <link rel="stylesheet" href="/static/apis/apis.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Claude API</h1>
+            <span class="version">v1.0.0</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="/static/dashboard/dashboard.html" class="nav-link">📊 仪表盘</a></li>
+            <li class="nav-item"><a href="/static/dialogues/dialogues.html" class="nav-link">💬 当前对话</a></li>
+            <li class="nav-item"><a href="/static/history/history.html" class="nav-link">📜 对话记录</a></li>
+
+            <li class="nav-item nav-item-collapsible">
+                <a href="javascript:void(0)" class="nav-link active" onclick="toggleApiMenu()">
+                    🔌 API接口
+                    <span class="collapse-icon">▼</span>
+                </a>
+                <ul class="sub-menu open" id="apiSubMenu">
+                    <li class="sub-nav-item active" onclick="showCategory('dialogue', this)">
+                        <a href="javascript:void(0)" class="sub-nav-link">对话接口</a>
+                    </li>
+                    <li class="sub-nav-item" onclick="showCategory('websocket', this)">
+                        <a href="javascript:void(0)" class="sub-nav-link">持久化WebSocket</a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="nav-item"><a href="/static/changes/changes.html" class="nav-link">📋 版本更新</a></li>
+        </ul>
+        <div class="theme-toggle-container">
+            <label class="theme-toggle">
+                <span class="toggle-label">暗色模式</span>
+                <input type="checkbox" id="themeToggle" checked onchange="toggleTheme()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="api-section">
+            <div class="api-intro" id="apiIntro">
+            </div>
+            <div id="apiCards" class="api-cards-grid">
+            </div>
+        </div>
+    </div>
+
+    <div id="apiDetailModal" class="modal">
+        <div class="modal-content medium">
+            <div class="modal-header">
+                <h2 id="apiModalTitle">API详情</h2>
+                <span class="close" onclick="closeApiModal()">&times;</span>
+            </div>
+            <div class="api-detail-content">
+                <div class="detail-section">
+                    <h3>请求方式</h3>
+                    <div class="content" id="apiDetailMethod"></div>
+                </div>
+                <div class="detail-section">
+                    <h3>请求路径</h3>
+                    <div class="content" id="apiDetailPath"></div>
+                </div>
+                <div class="detail-section">
+                    <h3>完整地址</h3>
+                    <div class="content code-block" id="apiDetailFullPath"></div>
+                </div>
+                <div class="detail-section" id="apiDetailRequestSection">
+                    <h3>请求样例</h3>
+                    <pre class="content code-block" id="apiDetailRequest"></pre>
+                </div>
+                <div class="detail-section">
+                    <h3>响应样例</h3>
+                    <pre class="content code-block" id="apiDetailResponse"></pre>
+                </div>
+                <div class="detail-section" id="apiDetailNotesSection" style="display:none;">
+                    <h3>备注</h3>
+                    <div class="content" id="apiDetailNotes"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/shared/common.js"></script>
+    <script src="/static/apis/apis.js"></script>
+</body>
+</html>

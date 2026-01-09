@@ -1,0 +1,68 @@
+/* 版本更新日志页面样式 */
+.changes-section {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.changes-section h1 {
+    color: var(--text-primary);
+    margin-bottom: 30px;
+    font-size: 32px;
+}
+
+.version-card {
+    background: var(--bg-secondary);
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.version-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.version-number {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--accent-color);
+}
+
+.version-date {
+    color: var(--text-tertiary);
+    font-size: 14px;
+}
+
+.changes-list {
+    list-style: none;
+    padding: 0;
+}
+
+.change-item {
+    padding: 10px 0;
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.6;
+    position: relative;
+    padding-left: 25px;
+}
+
+.change-item::before {
+    content: "•";
+    position: absolute;
+    left: 8px;
+    color: var(--accent-color);
+    font-size: 20px;
+}
+
+.no-versions {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-tertiary);
+    font-size: 16px;
+}

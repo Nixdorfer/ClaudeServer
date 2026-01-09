@@ -1,0 +1,5 @@
+{
+  "server_url": "wss://claude.nixdorfer.com/data/websocket/create",
+  "usage_limit_five_hour": 50,
+  "usage_limit_seven_day": 50
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>版本更新 - Claude API</title>
+    <link rel="stylesheet" href="/static/shared/common.css">
+    <link rel="stylesheet" href="/static/changes/changes.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Claude API</h1>
+            <span class="version">v1.0.0</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="/static/dashboard/dashboard.html" class="nav-link">📊 仪表盘</a></li>
+            <li class="nav-item"><a href="/static/dialogues/dialogues.html" class="nav-link">💬 当前对话</a></li>
+            <li class="nav-item"><a href="/static/history/history.html" class="nav-link">📜 对话记录</a></li>
+            <li class="nav-item"><a href="/static/apis/apis.html" class="nav-link">🔌 API接口</a></li>
+            <li class="nav-item"><a href="/static/changes/changes.html" class="nav-link">📋 版本更新</a></li>
+        </ul>
+        <div class="theme-toggle-container">
+            <label class="theme-toggle">
+                <span class="toggle-label">暗色模式</span>
+                <input type="checkbox" id="themeToggle" checked onchange="toggleTheme()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="changes-section">
+            <h1>📋 版本更新日志</h1>
+            <div id="changesList"></div>
+        </div>
+    </div>
+
+    <script src="/static/shared/common.js"></script>
+    <script src="/static/changes/changes.js"></script>
+</body>
+</html>

@@ -77,3 +77,84 @@ body {
 .typing-dot:nth-child(3) {
     animation-delay: 0.4s;
 }
+
+/* Markdown prose styles for notice dialog */
+.prose {
+    color: #d4d4d8;
+    line-height: 1.6;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+    color: #fafafa;
+    font-weight: 600;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+.prose h1 { font-size: 1.5em; }
+.prose h2 { font-size: 1.25em; }
+.prose h3 { font-size: 1.1em; }
+
+.prose p {
+    margin-bottom: 0.75em;
+}
+
+.prose ul, .prose ol {
+    padding-left: 1.5em;
+    margin-bottom: 0.75em;
+}
+
+.prose li {
+    margin-bottom: 0.25em;
+}
+
+.prose code {
+    background-color: #3f3f46;
+    padding: 0.125em 0.375em;
+    border-radius: 0.25em;
+    font-size: 0.875em;
+}
+
+.prose pre {
+    background-color: #27272a;
+    padding: 0.75em 1em;
+    border-radius: 0.5em;
+    overflow-x: auto;
+    margin-bottom: 0.75em;
+}
+
+.prose pre code {
+    background: none;
+    padding: 0;
+}
+
+.prose a {
+    color: #166d3b;
+    text-decoration: underline;
+}
+
+.prose a:hover {
+    color: #1a8548;
+}
+
+.prose blockquote {
+    border-left: 3px solid #3f3f46;
+    padding-left: 1em;
+    margin-left: 0;
+    color: #a1a1aa;
+}
+
+.prose strong {
+    color: #fafafa;
+    font-weight: 600;
+}
+
+.prose em {
+    font-style: italic;
+}
+
+.prose hr {
+    border: none;
+    border-top: 1px solid #3f3f46;
+    margin: 1em 0;
+}

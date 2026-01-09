@@ -30,3 +30,4 @@ client/frontend/package-lock.json
 *.md5
 
 !README.md
+!client/notice.md

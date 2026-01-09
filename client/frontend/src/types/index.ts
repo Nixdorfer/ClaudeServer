@@ -67,3 +67,11 @@ export interface UsageStatus {
   limit_five_hour: number
   limit_seven_day: number
 }
+
+export interface UpdateCheckResult {
+  has_update: boolean
+  current_version: string
+  latest_version: string
+  notes: string[]
+  download_url: string
+}

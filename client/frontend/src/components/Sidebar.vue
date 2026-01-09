@@ -9,6 +9,7 @@ defineProps<{
   usageStatus: UsageStatus | null
   usageBlocked: boolean
   usageBlockMessage: string
+  version: string
 }>()
 
 const emit = defineEmits<{
@@ -241,7 +242,8 @@ function handleClickOutside(e: MouseEvent) {
     </div>
 
     <div class="p-4 border-t border-zinc-800 text-xs text-zinc-500 text-center">
-      Claude 对话客户端
+      <div>Claude 对话客户端</div>
+      <div v-if="version" class="mt-1 text-zinc-600">v{{ version }}</div>
     </div>
 
     <Teleport to="body">

@@ -717,8 +717,14 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 	}
 	platform := "windows"
 	device, err := h.db.GetOrCreateDevice(devicePassword, platform)
-	if err != nil || device == nil {
-		sendWSError(conn, "Failed to get or create device")
+	if err != nil {
+		log.Printf("Failed to get or create device: %v (fingerprint: %s)", err, devicePassword)
+		sendWSError(conn, fmt.Sprintf("Failed to get or create device: %v", err))
+		return
+	}
+	if device == nil {
+		log.Printf("Device is nil after GetOrCreateDevice (fingerprint: %s)", devicePassword)
+		sendWSError(conn, "Device creation failed")
 		return
 	}
 	isBanned, banReason, _ := h.db.IsDeviceBanned(device.ID)

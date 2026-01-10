@@ -14,6 +14,7 @@ import (
 type Config struct {
 	Tokens            TokensConfig         `yaml:"tokens"`
 	Debug             bool                 `yaml:"debug"`
+	PrivateMode       bool                 `yaml:"private_mode"`
 	ThreadNum         int                  `yaml:"thread_num"`
 	ServerPort        int                  `yaml:"server_port"`
 	MinClientVersion  string               `yaml:"min_client_version"`
@@ -81,12 +82,12 @@ type MCPConnectorConfig struct {
 
 func LoadConfig(path string) (*Config, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		templatePath := "../src/config-template.yaml"
+		templatePath := "src/config-template.yaml"
 		if _, err := os.Stat(templatePath); err == nil {
 			log.Printf("\n⚠️  配置文件不存在: %s\n", path)
 			log.Println("请按照以下步骤创建配置文件：")
-			log.Println("1. 复制模板文件：cp src/config-template.yaml src/config.yaml")
-			log.Println("2. 编辑 src/config.yaml，填入您的配置信息")
+			log.Println("1. 复制模板文件：cp server/src/config-template.yaml server/src/config.yaml")
+			log.Println("2. 编辑 server/src/config.yaml，填入您的配置信息")
 			log.Println("   - organization_id: 从 claude.ai URL 中获取")
 			log.Println("   - sessionKey: 从浏览器 Cookie 中获取")
 			log.Println()

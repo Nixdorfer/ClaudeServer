@@ -154,3 +154,26 @@ body {
     border-top: 1px solid #3f3f46;
     margin: 1em 0;
 }
+
+* {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.selectable-text,
+.selectable-text * {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}
+
+.selectable-text::selection,
+.selectable-text *::selection {
+    background-color: #4a4a4a;
+    color: inherit;
+}
+
+.selectable-text::-moz-selection,
+.selectable-text *::-moz-selection {
+    background-color: #4a4a4a;
+    color: inherit;
+}

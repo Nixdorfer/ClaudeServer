@@ -20,6 +20,7 @@ const emit = defineEmits<{
   reconnect: []
   rename: [id: string, name: string]
   delete: [id: string]
+  openDeviceNotice: []
 }>()
 
 const editingId = ref<string | null>(null)
@@ -255,7 +256,11 @@ function handleClickOutside(e: MouseEvent) {
 
     <div class="p-4 border-t border-zinc-800 text-xs text-zinc-500 text-center">
       <div>Claude 对话客户端</div>
-      <div v-if="version" class="mt-1 text-zinc-600">v{{ version }}</div>
+      <div
+        v-if="version"
+        class="mt-1 text-zinc-600 cursor-pointer hover:text-zinc-400 transition-colors"
+        @click="emit('openDeviceNotice')"
+      >v{{ version }}</div>
     </div>
 
     <Teleport to="body">

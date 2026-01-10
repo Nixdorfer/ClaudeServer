@@ -1,11 +1,11 @@
 import { ref, computed } from 'vue'
 import type { Message, Conversation, UsageStatus, UpdateCheckResult, VersionInfo } from '../types'
 
+declare const __APP_VERSION__: string
 const WS_URL = 'wss://claude.nixdorfer.com/data/websocket/create'
 const API_URL = 'https://claude.nixdorfer.com/api/device/status'
 const USAGE_URL = 'https://claude.nixdorfer.com/api/usage'
 const UPDATE_URL = 'https://raw.githubusercontent.com/Nixdorfer/ClaudeServer/main/info.json'
-declare const __APP_VERSION__: string
 const CURRENT_VERSION = __APP_VERSION__
 const STORAGE_KEY_CONVERSATIONS = 'claude_conversations'
 const STORAGE_KEY_MESSAGES = 'claude_messages_'
@@ -15,6 +15,7 @@ const conversations = ref<Conversation[]>([])
 const currentConversationId = ref<string>('')
 const messages = ref<Message[]>([])
 const isConnected = ref(false)
+const isConnecting = ref(false)
 const isLoading = ref(false)
 const streamingContent = ref('')
 const error = ref<string | null>(null)
@@ -27,11 +28,12 @@ const serverUnavailable = ref(false)
 const versionOutdated = ref(false)
 const versionOutdatedMessage = ref('')
 const updateInfo = ref<UpdateCheckResult | null>(null)
+const reconnectAttempts = ref(0)
+const maxReconnectAttempts = 5
 
 let ws: WebSocket | null = null
 let pendingUserMessage: string | null = null
 let reconnectTimer: number | null = null
-let connectAttempts = 0
 
 function getDeviceId(): string {
   let deviceId = localStorage.getItem(STORAGE_KEY_DEVICE_ID)
@@ -94,6 +96,7 @@ export function useChat() {
       console.log('[WS] Server unavailable, skipping connection')
       return
     }
+    isConnecting.value = true
     const deviceId = getDeviceId()
     const url = `${WS_URL}?device_id=${deviceId}&platform=android`
     console.log('[WS] Connecting to:', url)
@@ -102,21 +105,24 @@ export function useChat() {
       ws = new WebSocket(url)
     } catch (e) {
       console.error('[WS] WebSocket creation failed:', e)
+      isConnecting.value = false
       return
     }
     ws.onopen = () => {
       console.log('[WS] Connection opened')
       isConnected.value = true
+      isConnecting.value = false
       error.value = null
-      connectAttempts = 0
+      reconnectAttempts.value = 0
     }
     ws.onclose = (event) => {
       console.log('[WS] Connection closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean)
       isConnected.value = false
+      isConnecting.value = false
       if (!isBanned.value && !serverUnavailable.value) {
-        connectAttempts++
-        console.log('[WS] Connect attempts:', connectAttempts)
-        if (connectAttempts >= 3) {
+        reconnectAttempts.value++
+        console.log('[WS] Connect attempts:', reconnectAttempts.value)
+        if (reconnectAttempts.value >= maxReconnectAttempts) {
           console.log('[WS] Max attempts reached, marking server unavailable')
           serverUnavailable.value = true
         } else {
@@ -130,8 +136,9 @@ export function useChat() {
     ws.onerror = (event) => {
       console.error('[WS] Connection error:', event)
       isConnected.value = false
-      connectAttempts++
-      if (connectAttempts >= 3) {
+      isConnecting.value = false
+      reconnectAttempts.value++
+      if (reconnectAttempts.value >= maxReconnectAttempts) {
         serverUnavailable.value = true
       }
     }
@@ -172,6 +179,9 @@ export function useChat() {
         saveMessages(currentConversationId.value)
         updateConversationMeta()
       }
+      if (data.dialogue_id) {
+        sendAck(data.dialogue_id as number)
+      }
       fetchUsageStatus()
     } else if (msg.type === 'error' && data) {
       error.value = (data.error as string) || (data.message as string) || '未知错误'
@@ -183,6 +193,7 @@ export function useChat() {
     } else if (msg.type === 'banned' && data) {
       isBanned.value = true
       bannedReason.value = (data.reason as string) || '您的设备已被封禁'
+      isLoading.value = false
       if (ws) {
         ws.close()
       }
@@ -199,10 +210,18 @@ export function useChat() {
     } else if (msg.type === 'version_outdated' && data) {
       versionOutdated.value = true
       versionOutdatedMessage.value = (data.message as string) || '当前版本已过时，无法继续使用，请更新到最新版本'
+      isLoading.value = false
       if (ws) {
         ws.close()
       }
     }
+  }
+  function sendAck(dialogueId: number) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({
+      type: 'ack',
+      data: { dialogue_id: dialogueId }
+    }))
   }
   function formatUsageBlockMessage(reason: string, resetTime: string): string {
     let message = reason
@@ -324,7 +343,7 @@ export function useChat() {
       ws.close()
     }
     serverUnavailable.value = false
-    connectAttempts = 0
+    reconnectAttempts.value = 0
     connect()
   }
   function deleteConversation(id: string) {
@@ -467,12 +486,54 @@ export function useChat() {
   function clearError() {
     error.value = null
   }
+  async function reportError(errorMessage: string, conversationId: string): Promise<boolean> {
+    const apiUrl = 'https://claude.nixdorfer.com/api/error'
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          error: errorMessage,
+          conversation_id: conversationId,
+          device_id: getDeviceId(),
+          platform: 'android',
+          version: CURRENT_VERSION
+        })
+      })
+      if (response.ok) {
+        error.value = null
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error('Failed to report error:', e)
+      return false
+    }
+  }
+  async function updateDeviceNotice(notice: string): Promise<boolean> {
+    const apiUrl = 'https://claude.nixdorfer.com/api/device/notice'
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: getDeviceId(),
+          notice: notice
+        })
+      })
+      return response.ok
+    } catch (e) {
+      console.error('Failed to update device notice:', e)
+      return false
+    }
+  }
   return {
     conversations,
     currentConversationId,
     currentConversation,
     messages,
     isConnected,
+    isConnecting,
     isLoading,
     streamingContent,
     error,
@@ -486,6 +547,7 @@ export function useChat() {
     versionOutdated,
     versionOutdatedMessage,
     updateInfo,
+    reconnectAttempts,
     initialize,
     cleanup,
     sendMessage,
@@ -497,6 +559,9 @@ export function useChat() {
     deleteConversation,
     checkForUpdates,
     fetchUsageStatus,
-    currentVersion: CURRENT_VERSION
+    reportError,
+    updateDeviceNotice,
+    currentVersion: CURRENT_VERSION,
+    wsEndpoint: WS_URL
   }
 }

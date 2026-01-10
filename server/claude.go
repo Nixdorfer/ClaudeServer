@@ -383,6 +383,10 @@ func sendDialogueMessageWithOptions(orgID, conversationID, cookie, prompt, paren
 	WaitForNextRequest()
 	url := fmt.Sprintf("https://claude.ai/api/organizations/%s/chat_conversations/%s/completion",
 		orgID, conversationID)
+	systemPrompt := LoadSystemPrompt()
+	if systemPrompt != "" {
+		prompt = systemPrompt + "\n\n" + prompt
+	}
 	reqBody := map[string]any{
 		"prompt":              prompt,
 		"parent_message_uuid": parentMessageUUID,
@@ -477,6 +481,10 @@ func sendDialogueMessageWithFiles(orgID, conversationID, cookie, prompt, parentM
 	WaitForNextRequest()
 	url := fmt.Sprintf("https://claude.ai/api/organizations/%s/chat_conversations/%s/completion",
 		orgID, conversationID)
+	systemPrompt := LoadSystemPrompt()
+	if systemPrompt != "" {
+		prompt = systemPrompt + "\n\n" + prompt
+	}
 	attachmentsPayload := make([]map[string]any, 0)
 	for _, att := range attachments {
 		attachmentsPayload = append(attachmentsPayload, map[string]any{

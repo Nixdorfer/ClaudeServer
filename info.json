@@ -1,10 +1,29 @@
 [
     {
-        "version": "1.0.0",
+        "version": "1.2.1",
         "note": [
-            "初始化程序"
+            "更改了数据库保存模式",
+            "优化了代码显示",
+            "HTML代码可以在窗口内直接渲染"
         ],
-        "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.1"
+    },
+    {
+        "version": "1.2.0",
+        "note": [
+            "移动端改为使用Capacitor实现",
+            "PC端改为使用Wails实现"
+        ],
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.0"
+    },
+    {
+        "version": "1.1.1",
+        "note": [
+            "流式传输对话改为async防止阻塞主线程",
+            "新增了移动端图标",
+            "修复了Packageinfo is null的异常"
+        ],
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.1.1"
     },
     {
         "version": "1.1.0",
@@ -14,18 +33,15 @@
             "修复了一个用量获取失败的异常",
             "移除了客户端的先期用量判断 完全由服务端执行",
             "对AI和用户内容进行markdown渲染",
-            "框架改为使用Tauri(有人说要移动端 用不了我最爱的Wails力/悲)",
             "新增了版本更新检查和设备封禁"
         ],
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
     },
     {
-        "version": "1.1.1",
+        "version": "1.0.0",
         "note": [
-            "流式传输对话改为async防止阻塞主线程",
-            "新增了移动端图标",
-            "修复了Packageinfo is null的异常"
+            "初始化程序"
         ],
-        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/v1.1.0"
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
     }
 ]

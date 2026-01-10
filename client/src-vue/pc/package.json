@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "build:dev": "vite build",
     "build:prod": "cross-env NODE_ENV=production vue-tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-shell": "^2",
+    "@wailsio/runtime": "^3.0.0-alpha.0",
+    "highlight.js": "^11.11.1",
     "marked": "^9.0.0",
     "vue": "^3.2.37"
   },

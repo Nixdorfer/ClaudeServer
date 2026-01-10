@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -86,16 +87,25 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 		parentMessageUUID = "00000000-0000-4000-8000-000000000000"
 		h.dialogueManager.GetOrCreateSession(conversationID)
 	}
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        req.Request,
-		ReceiveTime:    receiveTime,
-		Status:         "processing",
+	devicePassword := c.GetHeader("X-Device-ID")
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
 	}
-	h.db.CreateMessage(msg)
+	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
+	conv, _ := h.db.CreateConversation(device.ID, conversationID)
+	dialogueOrder, _ := h.db.GetNextDialogueOrder(conv.ID)
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          dialogueOrder,
+		UserMessage:    req.Request,
+		CreateTime:     time.Now(),
+		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
+	}
+	h.db.CreateDialogue(dialogue)
 	session := h.dialogueManager.GetOrCreateSession(conversationID)
 	session.GeneratingMutex.Lock()
 	session.IsGenerating = true
@@ -110,8 +120,8 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 			session.GeneratingMutex.Unlock()
 			broadcastDialogues()
 		}()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		dialogueStreamMutex.Lock()
 		dialogueStreams[conversationID] = ""
 		dialogueStreamMutex.Unlock()
@@ -122,10 +132,9 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 					dialogueStreamMutex.Lock()
 					delete(dialogueStreams, conversationID)
 					dialogueStreamMutex.Unlock()
-					msg.Status = "failed"
-					msg.Notice = fmt.Sprintf("File decode error: %v", err)
-					h.db.UpdateMessage(msg)
-					c.JSON(http.StatusBadRequest, gin.H{"error": msg.Notice})
+					dialogue.Status = "send_failed"
+					h.db.UpdateDialogue(dialogue)
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("File decode error: %v", err)})
 					return
 				}
 				uploadResp, err := uploadFile(h.config.GetOrganizationID(), conversationID, cookie, &file)
@@ -133,10 +142,9 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 					dialogueStreamMutex.Lock()
 					delete(dialogueStreams, conversationID)
 					dialogueStreamMutex.Unlock()
-					msg.Status = "failed"
-					msg.Notice = fmt.Sprintf("File upload error: %v", err)
-					h.db.UpdateMessage(msg)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": msg.Notice})
+					dialogue.Status = "send_failed"
+					h.db.UpdateDialogue(dialogue)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("File upload error: %v", err)})
 					return
 				}
 				attachments = append(attachments, FileAttachment{
@@ -165,14 +173,13 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 		dialogueStreamMutex.Lock()
 		delete(dialogueStreams, conversationID)
 		dialogueStreamMutex.Unlock()
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			LogExchange(req.Request, err.Error(), true)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message: " + err.Error()})
 			return
@@ -181,18 +188,17 @@ func (h *Handler) DialogueChatEnhanced(c *gin.Context) {
 		if err == nil {
 			h.dialogueManager.UpdateSession(conversationID, newParentUUID)
 		}
-		msg.Response = response
-		msg.Status = "done"
-		h.db.UpdateMessage(msg)
+		dialogue.AssistantMessage = &response
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		LogExchange(req.Request, response, false)
 		c.JSON(http.StatusOK, DialogueResponse{
 			ConversationID: conversationID,
 			Response:       response,
 		})
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Server busy, try again later"})
 	}
 }
@@ -271,16 +277,25 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 		h.dialogueManager.SetStreamMode(conversationID, true)
 	}
 	sendWSMessage(conn, "conversation_id", map[string]string{"conversation_id": conversationID})
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        req.Request,
-		ReceiveTime:    receiveTime,
-		Status:         "processing",
+	devicePassword := c.GetHeader("X-Device-ID")
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
 	}
-	h.db.CreateMessage(msg)
+	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
+	conv, _ := h.db.CreateConversation(device.ID, conversationID)
+	dialogueOrder, _ := h.db.GetNextDialogueOrder(conv.ID)
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          dialogueOrder,
+		UserMessage:    req.Request,
+		CreateTime:     time.Now(),
+		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
+	}
+	h.db.CreateDialogue(dialogue)
 	session := h.dialogueManager.GetOrCreateSession(conversationID)
 	session.GeneratingMutex.Lock()
 	session.IsGenerating = true
@@ -296,24 +311,22 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 	select {
 	case h.semaphore <- struct{}{}:
 		defer func() { <-h.semaphore }()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		var attachments []FileAttachment
 		if len(req.Files) > 0 {
 			for _, file := range req.Files {
 				if err := file.DecodeContent(); err != nil {
-					msg.Status = "failed"
-					msg.Notice = fmt.Sprintf("File decode error: %v", err)
-					h.db.UpdateMessage(msg)
-					sendWSError(conn, msg.Notice)
+					dialogue.Status = "send_failed"
+					h.db.UpdateDialogue(dialogue)
+					sendWSError(conn, fmt.Sprintf("File decode error: %v", err))
 					return
 				}
 				uploadResp, err := uploadFile(h.config.GetOrganizationID(), conversationID, cookie, &file)
 				if err != nil {
-					msg.Status = "failed"
-					msg.Notice = fmt.Sprintf("File upload error: %v", err)
-					h.db.UpdateMessage(msg)
-					sendWSError(conn, msg.Notice)
+					dialogue.Status = "send_failed"
+					h.db.UpdateDialogue(dialogue)
+					sendWSError(conn, fmt.Sprintf("File upload error: %v", err))
 					return
 				}
 				attachments = append(attachments, FileAttachment{
@@ -342,14 +355,13 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 				}
 			},
 		)
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			LogExchange(req.Request, err.Error(), true)
 			sendWSError(conn, "Failed to send message: "+err.Error())
 			return
@@ -358,9 +370,9 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 		if err == nil {
 			h.dialogueManager.UpdateSession(conversationID, newParentUUID)
 		}
-		msg.Response = response
-		msg.Status = "done"
-		h.db.UpdateMessage(msg)
+		dialogue.AssistantMessage = &response
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		LogExchange(req.Request, response, false)
 		sendWSMessage(conn, "done", map[string]any{
 			"conversation_id": conversationID,
@@ -368,9 +380,8 @@ func (h *Handler) DialogueStream(c *gin.Context) {
 			"done":            true,
 		})
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		sendWSError(conn, "Server busy, try again later")
 	}
 }
@@ -393,6 +404,9 @@ func sendWSMessage(conn *websocket.Conn, msgType string, data any) error {
 	msg := WSMessage{
 		Type: msgType,
 		Data: data,
+	}
+	if msgType != "content" {
+		DebugLogResponse(msgType, data)
 	}
 	conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	return conn.WriteJSON(msg)
@@ -474,16 +488,25 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 		h.dialogueManager.SetStreamMode(conversationID, true)
 	}
 	sendSSEEvent(c.Writer, flusher, "conversation_id", map[string]string{"conversation_id": conversationID})
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        request,
-		ReceiveTime:    receiveTime,
-		Status:         "processing",
+	devicePassword := c.GetHeader("X-Device-ID")
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
 	}
-	h.db.CreateMessage(msg)
+	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
+	conv, _ := h.db.CreateConversation(device.ID, conversationID)
+	dialogueOrder, _ := h.db.GetNextDialogueOrder(conv.ID)
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          dialogueOrder,
+		UserMessage:    request,
+		CreateTime:     time.Now(),
+		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
+	}
+	h.db.CreateDialogue(dialogue)
 	session := h.dialogueManager.GetOrCreateSession(conversationID)
 	session.GeneratingMutex.Lock()
 	session.IsGenerating = true
@@ -499,8 +522,8 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 	select {
 	case h.semaphore <- struct{}{}:
 		defer func() { <-h.semaphore }()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		response, err := sendDialogueMessageWithFiles(
 			h.config.GetOrganizationID(),
 			conversationID,
@@ -517,14 +540,13 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 				})
 			},
 		)
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			LogExchange(request, err.Error(), true)
 			sendSSEError(c.Writer, flusher, "Failed to send message: "+err.Error())
 			return
@@ -533,9 +555,9 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 		if err == nil {
 			h.dialogueManager.UpdateSession(conversationID, newParentUUID)
 		}
-		msg.Response = response
-		msg.Status = "done"
-		h.db.UpdateMessage(msg)
+		dialogue.AssistantMessage = &response
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		LogExchange(request, response, false)
 		sendSSEEvent(c.Writer, flusher, "done", map[string]any{
 			"conversation_id": conversationID,
@@ -543,9 +565,8 @@ func (h *Handler) DialogueEvent(c *gin.Context) {
 			"done":            true,
 		})
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		sendSSEError(c.Writer, flusher, "Server busy, try again later")
 	}
 }
@@ -556,9 +577,9 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
-	deviceID := c.Request.Header.Get("X-Device-ID")
-	if deviceID == "" {
-		deviceID = c.Query("device_id")
+	devicePassword := c.Request.Header.Get("X-Device-ID")
+	if devicePassword == "" {
+		devicePassword = c.Query("device_id")
 	}
 	platform := c.Request.Header.Get("X-Platform")
 	if platform == "" {
@@ -576,10 +597,14 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 			return
 		}
 	}
-	if deviceID != "" {
-		_, err := h.db.GetOrCreateDevice(deviceID, platform)
+	var deviceID int
+	if devicePassword != "" {
+		device, err := h.db.GetOrCreateDevice(devicePassword, platform)
 		if err != nil {
-			log.Printf("Failed to register device %s: %v", deviceID, err)
+			log.Printf("Failed to register device %s: %v", devicePassword, err)
+		}
+		if device != nil {
+			deviceID = device.ID
 		}
 		isBanned, banReason, err := h.db.IsDeviceBanned(deviceID)
 		if err != nil {
@@ -590,11 +615,11 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 				"banned": true,
 				"reason": banReason,
 			})
-			log.Printf("Banned device attempted connection: %s", deviceID)
+			log.Printf("Banned device attempted connection: %s", devicePassword)
 			return
 		}
 	}
-	c.Set("device_id", deviceID)
+	c.Set("device_id", devicePassword)
 	conn.SetPongHandler(func(appData string) error {
 		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
 		return nil
@@ -608,7 +633,7 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 		"status":  "connected",
 		"message": "WebSocket connection established",
 	})
-	log.Printf("WebSocket连接已建立: %s (device: %s)", c.Request.RemoteAddr, deviceID)
+	log.Printf("WebSocket连接已建立: %s (device: %d)", c.Request.RemoteAddr, deviceID)
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
@@ -643,6 +668,7 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 			sendWSError(conn, "Invalid message format: missing type field")
 			continue
 		}
+		DebugLogRequest(msgType, msg)
 		switch msgType {
 		case "dialogue":
 			h.handleWSDialogueRequest(conn, msg)
@@ -652,6 +678,8 @@ func (h *Handler) PersistentWebSocket(c *gin.Context) {
 			h.handleWSAPIRequest(conn, msg)
 		case "ping":
 			sendWSMessage(conn, "pong", map[string]string{"timestamp": time.Now().Format(time.RFC3339)})
+		case "ack":
+			h.handleWSAck(conn, msg)
 		default:
 			sendWSError(conn, fmt.Sprintf("Unknown message type: %s", msgType))
 		}
@@ -668,7 +696,7 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 	conversationID, _ := data["conversation_id"].(string)
 	model, _ := data["model"].(string)
 	style, _ := data["style"].(string)
-	deviceID, _ := data["device_id"].(string)
+	devicePassword, _ := data["device_id"].(string)
 	if request == "" {
 		sendWSError(conn, "Request cannot be empty")
 		return
@@ -683,8 +711,10 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 		})
 		return
 	}
-	if deviceID != "" {
-		isBanned, banReason, _ := h.db.IsDeviceBanned(deviceID)
+	platform := "windows"
+	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
+	if device != nil {
+		isBanned, banReason, _ := h.db.IsDeviceBanned(device.ID)
 		if isBanned {
 			sendWSMessage(conn, "banned", map[string]any{
 				"banned": true,
@@ -727,17 +757,27 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 		h.dialogueManager.SetStreamMode(conversationID, true)
 	}
 	sendWSMessage(conn, "conversation_id", map[string]string{"conversation_id": conversationID})
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
-	dbMsg := &Message{
-		ConversationID: conversationID,
-		DeviceID:       deviceID,
-		ExchangeNumber: exchangeNum,
-		Request:        request,
-		ReceiveTime:    receiveTime,
-		Status:         "processing",
+	conv, err := h.db.CreateConversation(device.ID, conversationID)
+	if err != nil || conv == nil {
+		conv, err = h.db.GetConversationByUID(conversationID)
+		if err != nil || conv == nil {
+			log.Printf("无法创建或获取对话: %v", err)
+			sendWSMessage(conn, "error", map[string]string{"error": "无法创建对话"})
+			return
+		}
 	}
-	h.db.CreateMessage(dbMsg)
+	dialogueOrder, _ := h.db.GetNextDialogueOrder(conv.ID)
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          dialogueOrder,
+		UserMessage:    request,
+		CreateTime:     time.Now(),
+		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
+	}
+	h.db.CreateDialogue(dialogue)
 	session := h.dialogueManager.GetOrCreateSession(conversationID)
 	session.GeneratingMutex.Lock()
 	session.IsGenerating = true
@@ -752,8 +792,8 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 	select {
 	case h.semaphore <- struct{}{}:
 		defer func() { <-h.semaphore }()
-		sendTime := time.Now()
-		dbMsg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		response, err := sendDialogueMessageWithFiles(
 			h.config.GetOrganizationID(),
 			conversationID,
@@ -772,14 +812,13 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 				}
 			},
 		)
-		responseTime := time.Now()
-		dbMsg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		dbMsg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			dbMsg.Status = "failed"
-			dbMsg.Notice = err.Error()
-			h.db.UpdateMessage(dbMsg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			LogExchange(request, err.Error(), true)
 			sendWSError(conn, "Failed to send message: "+err.Error())
 			return
@@ -788,19 +827,34 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 		if err == nil {
 			h.dialogueManager.UpdateSession(conversationID, newParentUUID)
 		}
-		dbMsg.Response = response
-		dbMsg.Status = "done"
-		h.db.UpdateMessage(dbMsg)
+		dialogue.AssistantMessage = &response
+		dialogue.Status = "replying"
+		h.db.UpdateDialogue(dialogue)
 		LogExchange(request, response, false)
+		ackChan := make(chan struct{}, 1)
+		h.pendingAcks.Store(dialogue.ID, ackChan)
 		sendWSMessage(conn, "done", map[string]any{
 			"conversation_id": conversationID,
+			"dialogue_id":     dialogue.ID,
 			"response":        response,
 			"done":            true,
 		})
+		go func(dialogueID int) {
+			select {
+			case <-ackChan:
+				h.pendingAcks.Delete(dialogueID)
+			case <-time.After(30 * time.Second):
+				h.pendingAcks.Delete(dialogueID)
+				d, err := h.db.GetDialogueByID(dialogueID)
+				if err == nil && d.Status == "replying" {
+					d.Status = "reply_failed"
+					h.db.UpdateDialogue(d)
+				}
+			}
+		}(dialogue.ID)
 	default:
-		dbMsg.Status = "overloaded"
-		dbMsg.Notice = "Server busy"
-		h.db.UpdateMessage(dbMsg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		sendWSError(conn, "Server busy, try again later")
 	}
 }
@@ -821,6 +875,37 @@ func (h *Handler) handleWSKeepalive(conn *websocket.Conn, msg map[string]any) {
 		"conversation_id": conversationID,
 		"status":          "keepalive",
 		"message":         "Session refreshed",
+	})
+}
+
+func (h *Handler) handleWSAck(conn *websocket.Conn, msg map[string]any) {
+	data, ok := msg["data"].(map[string]any)
+	if !ok {
+		sendWSError(conn, "Invalid ack request: missing data field")
+		return
+	}
+	dialogueID, ok := data["dialogue_id"].(float64)
+	if !ok {
+		sendWSError(conn, "Invalid ack request: missing dialogue_id")
+		return
+	}
+	id := int(dialogueID)
+	if ackChanVal, ok := h.pendingAcks.Load(id); ok {
+		if ackChan, ok := ackChanVal.(chan struct{}); ok {
+			select {
+			case ackChan <- struct{}{}:
+			default:
+			}
+		}
+	}
+	dialogue, err := h.db.GetDialogueByID(id)
+	if err == nil && dialogue.Status == "replying" {
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
+	}
+	sendWSMessage(conn, "ack_received", map[string]any{
+		"dialogue_id": id,
+		"status":      "ok",
 	})
 }
 
@@ -877,22 +962,24 @@ func (h *Handler) handleWSAPIRequest(conn *websocket.Conn, msg map[string]any) {
 			responseData = map[string]any{"conversations": conversations}
 		}
 	case "/api/dialogues/:id/history":
-		messages, err := h.db.GetConversationMessages(dialogueID)
+		var convID int
+		fmt.Sscanf(dialogueID, "%d", &convID)
+		dialogues, err := h.db.GetConversationDialogues(convID)
 		if err != nil {
 			responseData = map[string]any{"messages": []any{}}
 		} else {
-			responseData = map[string]any{"messages": messages}
+			responseData = map[string]any{"messages": dialogues}
 		}
 	case "/api/dialogues/:id":
 		h.dialogueManager.DeleteSession(dialogueID)
 		broadcastDialogues()
 		responseData = map[string]any{"message": "Dialogue deleted successfully"}
 	case "/api/record/:id":
-		var msgID int64
+		var msgID int
 		fmt.Sscanf(recordID, "%d", &msgID)
-		message, err := h.db.GetMessageByID(msgID)
+		dialogue, err := h.db.GetDialogueByID(msgID)
 		if err == nil {
-			responseData = message
+			responseData = dialogue
 		} else {
 			err = fmt.Errorf("Record not found")
 		}
@@ -919,7 +1006,7 @@ func (h *Handler) handleWSAPIRequest(conn *websocket.Conn, msg map[string]any) {
 			{"path": "/data/websocket/create", "description": "Create persistent WebSocket connection", "method": "GET"},
 		}
 		version := "1.0.0"
-		if changes, err := LoadVersionChanges("../src/changes.yaml"); err == nil {
+		if changes, err := LoadVersionChanges("src/changes.yaml"); err == nil {
 			version = GetLatestVersion(changes)
 		}
 		responseData = map[string]any{

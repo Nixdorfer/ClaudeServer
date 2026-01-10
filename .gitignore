@@ -7,19 +7,35 @@ nul
 server/go.sum
 
 #Server端配置文件
-src/config.yaml
+server/src/config.yaml
 
-#Client后端临时文件
-client/src-tauri/gen
-client/src-tauri/target
-client/src-tauri/Cargo.lock
+#Client桌面端临时文件
+client/src-wails/.task/
+client/src-wails/bin/
+client/src-wails/build/
+client/src-wails/frontend/dist/
+client/src-wails/frontend/node_modules/
 
-#Client前端临时文件
+#Client桌面前端临时文件
 client/src-vue/*/node_modules
 client/src-vue/*/dist
 client/src-vue/*/package-lock.json
 client/src-vue/*/package.json.md5
-client/src-vue/mobile/android/
+
+#Client移动端临时文件
+client/src-vue/mobile/android/bin/
+client/src-vue/mobile/android/gen/
+client/src-vue/mobile/android/out/
+client/src-vue/mobile/android/proguard/
+client/src-vue/mobile/android/.navigation/
+client/src-vue/mobile/android/captures/
+client/src-vue/mobile/android/.gradle/
+client/src-vue/mobile/android/build/
+client/src-vue/mobile/android/app/build/
+client/src-vue/mobile/android/app/release.keystore
+client/src-vue/mobile/android/local.properties
+client/src-vue/mobile/android/.idea/
+client/src-vue/mobile/android/capacitor-cordova-android-plugins/
 
 #项目README
 !README.md
@@ -39,3 +55,11 @@ client/src-vue/mobile/android/
 *.dylib
 *.test
 *.out
+*.db
+*.iml
+*.dex
+*.class
+*.apk
+*.aar
+*.ap_
+*.aab

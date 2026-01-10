@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v3.json",
+  "name": "ClaudeChat",
+  "outputfilename": "ClaudeChat",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:url": "http://localhost:5173",
+  "frontend:dir": "frontend",
+  "author": {
+    "name": "Nix",
+    "email": "admin@nixdorfer.com"
+  }
+}

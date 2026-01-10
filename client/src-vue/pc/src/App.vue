@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-shell'
+import { Events, Browser } from '@wailsio/runtime'
+// @ts-ignore
+import * as UpdateService from '../bindings/claudechat/services/updateservice.js'
 import Sidebar from './components/Sidebar.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import Modal from './components/Modal.vue'
@@ -32,31 +32,29 @@ const {
   reconnect,
   clearError,
   renameConversation,
-  deleteConversation
+  deleteConversation,
+  reportError,
+  updateDeviceNotice
 } = useChat()
 
 const showUpdateDialog = ref(false)
 const updateInfo = ref<UpdateCheckResult | null>(null)
 const currentVersion = ref('')
-
 const showConnectionErrorDialog = ref(false)
-
 const showBannedDialog = ref(false)
 const bannedReason = ref('')
-
 const showVersionOutdatedDialog = ref(false)
 const outdatedVersionInfo = ref<{ current_version: string; required_version: string; message: string } | null>(null)
-
 const showNoticeDialog = ref(false)
 const noticeContent = ref(staticNoticeContent)
-
 const showUsageBlockedDialog = ref(true)
-
 const showServerUnavailableDialog = ref(true)
-
-let connectionErrorUnlisten: UnlistenFn | null = null
-let deviceBannedUnlisten: UnlistenFn | null = null
-let versionOutdatedUnlisten: UnlistenFn | null = null
+const showDeviceNoticeDialog = ref(false)
+const deviceNoticeInput = ref('')
+const deviceNoticeSending = ref(false)
+let connectionErrorUnlisten: (() => void) | null = null
+let deviceBannedUnlisten: (() => void) | null = null
+let versionOutdatedUnlisten: (() => void) | null = null
 
 const renderedNotice = computed(() => {
   if (!noticeContent.value) return ''
@@ -70,7 +68,7 @@ const sendDisabled = computed(() => showBannedDialog.value || usageBlocked.value
 
 async function openDownloadPage() {
   if (updateInfo.value?.download_url) {
-    await open(updateInfo.value.download_url)
+    Browser.OpenURL(updateInfo.value.download_url)
   }
 }
 
@@ -86,8 +84,8 @@ function handleNoticeConfirm() {
 
 async function checkForUpdates() {
   try {
-    currentVersion.value = await invoke<string>('get_current_version')
-    const result = await invoke<UpdateCheckResult>('check_for_update')
+    currentVersion.value = await UpdateService.GetCurrentVersion()
+    const result = await UpdateService.CheckForUpdate() as unknown as UpdateCheckResult
     if (result.has_update) {
       updateInfo.value = result
       showUpdateDialog.value = true
@@ -109,19 +107,23 @@ onMounted(async () => {
   initialize()
   checkNotice()
   checkForUpdates()
-
-  connectionErrorUnlisten = await listen<string>('connection_error', (event) => {
-    const err = event.payload
+  document.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+  })
+  connectionErrorUnlisten = Events.On('connection_error', (event: any) => {
+    const err = String(event?.data || event || '')
     if (err.includes('claude.nixdorfer.com') || err.includes('连接失败') || err.includes('dial')) {
       showConnectionErrorDialog.value = true
     }
   })
-  deviceBannedUnlisten = await listen<{ reason?: string }>('device_banned', (event) => {
-    bannedReason.value = event.payload.reason || '您的设备已被封禁'
+  deviceBannedUnlisten = Events.On('device_banned', (event: any) => {
+    const data = event?.data || event
+    bannedReason.value = data?.reason || '您的设备已被封禁'
     showBannedDialog.value = true
   })
-  versionOutdatedUnlisten = await listen<{ current_version: string; required_version: string; message: string }>('version_outdated', async (event) => {
-    outdatedVersionInfo.value = event.payload
+  versionOutdatedUnlisten = Events.On('version_outdated', async (event: any) => {
+    const data = event?.data || event
+    outdatedVersionInfo.value = data
     showVersionOutdatedDialog.value = true
     await checkForUpdates()
   })
@@ -155,6 +157,23 @@ function handleRename(id: string, name: string) {
 function handleDelete(id: string) {
   deleteConversation(id)
 }
+async function handleReportError(errorMsg: string, conversationId: string) {
+  await reportError(errorMsg, conversationId)
+}
+function handleOpenDeviceNotice() {
+  deviceNoticeInput.value = ''
+  showDeviceNoticeDialog.value = true
+}
+async function handleSendDeviceNotice() {
+  if (!deviceNoticeInput.value.trim() || deviceNoticeSending.value) return
+  deviceNoticeSending.value = true
+  const success = await updateDeviceNotice(deviceNoticeInput.value.trim())
+  deviceNoticeSending.value = false
+  if (success) {
+    showDeviceNoticeDialog.value = false
+    deviceNoticeInput.value = ''
+  }
+}
 </script>
 
 <template>
@@ -174,6 +193,7 @@ function handleDelete(id: string) {
       @reconnect="reconnect"
       @rename="handleRename"
       @delete="handleDelete"
+      @open-device-notice="handleOpenDeviceNotice"
     />
 
     <ChatWindow
@@ -182,8 +202,10 @@ function handleDelete(id: string) {
       :is-connected="isConnected"
       :error="error"
       :send-disabled="sendDisabled"
+      :conversation-id="currentConversationId"
       @send="handleSend"
       @clear-error="clearError"
+      @report-error="handleReportError"
     />
 
     <Modal
@@ -404,7 +426,7 @@ function handleDelete(id: string) {
         </div>
         <div class="space-y-4">
           <p class="text-zinc-300">
-            服务器暂时关闭或遇到异常，请稍后再试。
+            服务器暂时关闭或遇到异常，请稀后再试。
           </p>
           <div class="bg-zinc-800/50 rounded-lg p-4">
             <p class="text-sm text-zinc-400 mb-2">如有疑问请联系管理员:</p>
@@ -421,5 +443,27 @@ function handleDelete(id: string) {
         </div>
       </div>
     </div>
+    <Modal
+      :show="showDeviceNoticeDialog"
+      title="设备备注"
+      confirm-text="发送"
+      cancel-text="取消"
+      :show-cancel="true"
+      type="info"
+      @confirm="handleSendDeviceNotice"
+      @cancel="showDeviceNoticeDialog = false"
+    >
+      <div class="space-y-4">
+        <p class="text-sm text-zinc-400">输入备注信息，用于标识此设备</p>
+        <input
+          v-model="deviceNoticeInput"
+          type="text"
+          placeholder="例如：我的笔记本电脑"
+          class="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 text-sm placeholder-zinc-500 focus:outline-none focus:border-btn-primary"
+          @keydown.enter="handleSendDeviceNotice"
+        />
+        <p v-if="deviceNoticeSending" class="text-xs text-zinc-500">正在发送...</p>
+      </div>
+    </Modal>
   </div>
 </template>

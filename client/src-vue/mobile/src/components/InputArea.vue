@@ -5,11 +5,17 @@ const props = defineProps<{
   disabled: boolean
   isLoading: boolean
   sendDisabled?: boolean
+  initialValue?: string
 }>()
 const emit = defineEmits<{
   send: [message: string]
 }>()
 const inputText = ref('')
+watch(() => props.initialValue, (val) => {
+  if (val) {
+    inputText.value = val
+  }
+})
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 function handleSend() {
   if (inputText.value.trim() && !props.disabled && !props.isLoading && !props.sendDisabled) {

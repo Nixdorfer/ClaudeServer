@@ -5,7 +5,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -26,43 +25,74 @@ type Stats struct {
 }
 
 type CldDevice struct {
-	DeviceID  string    `gorm:"primaryKey;type:varchar(64)" json:"device_id"`
-	Platform  string    `gorm:"type:varchar(16)" json:"platform"`
-	FirstSeen time.Time `gorm:"not null;autoCreateTime" json:"first_seen"`
-	IsBanned  bool      `gorm:"not null;default:false" json:"is_banned"`
-	BanReason string    `gorm:"type:text" json:"ban_reason"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID            int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Platform      string    `gorm:"type:varchar;not null" json:"platform"`
+	CreateTime    time.Time `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP;not null" json:"create_time"`
+	UpdateTime    time.Time `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP;not null" json:"update_time"`
+	Notice        *string   `gorm:"type:varchar" json:"notice"`
+	Banned        bool      `gorm:"default:false;not null" json:"banned"`
+	BanReason     *string   `gorm:"type:varchar" json:"ban_reason"`
+	Admin         bool      `gorm:"default:false;not null" json:"admin"`
+	AdminPassword string    `gorm:"type:varchar;not null;uniqueIndex" json:"-"`
+	Fingerprint   string    `gorm:"type:varchar;not null;uniqueIndex" json:"fingerprint"`
 }
 
 func (CldDevice) TableName() string {
 	return "cld_device"
 }
 
-type CldMessage struct {
-	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	ConversationID string     `gorm:"type:varchar(36);not null;index:idx_cld_conversation_id" json:"conversation_id"`
-	DeviceID       string     `gorm:"type:varchar(64);index:idx_cld_device_id" json:"device_id"`
-	ExchangeNumber int        `gorm:"not null" json:"exchange_number"`
-	Request        string     `gorm:"type:text;not null" json:"request"`
-	Response       string     `gorm:"type:text" json:"response"`
-	ReceiveTime    time.Time  `gorm:"not null" json:"receive_time"`
-	SendTime       *time.Time `json:"send_time"`
-	ResponseTime   *time.Time `json:"response_time"`
-	Duration       *float64   `json:"duration"`
-	RequestTokens  *int       `json:"request_tokens"`
-	ResponseTokens *int       `json:"response_tokens"`
-	Tokens         *int       `json:"tokens"`
-	Status         string     `gorm:"type:varchar(20);not null;default:'processing';index:idx_cld_status" json:"status"`
-	Notice         string     `gorm:"type:text" json:"notice"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
+type CldConversation struct {
+	ID       int    `gorm:"primaryKey;autoIncrement" json:"id"`
+	UID      string `gorm:"type:varchar;not null;uniqueIndex" json:"uid"`
+	DeviceID int    `gorm:"not null;index" json:"device_id"`
 }
 
-func (CldMessage) TableName() string {
-	return "cld_message"
+func (CldConversation) TableName() string {
+	return "cld_conversation"
 }
 
-type Message = CldMessage
+type CldDialogue struct {
+	ID               int        `gorm:"primaryKey;autoIncrement" json:"id"`
+	UID              string     `gorm:"type:varchar;not null;uniqueIndex" json:"uid"`
+	ConversationID   int        `gorm:"not null;index" json:"conversation_id"`
+	Order            int        `gorm:"column:order;default:1;not null" json:"order"`
+	UserMessage      string     `gorm:"type:text;not null" json:"user_message"`
+	AssistantMessage *string    `gorm:"type:text" json:"assistant_message"`
+	CreateTime       time.Time  `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP;not null" json:"create_time"`
+	FinishTime       *time.Time `gorm:"type:timestamptz" json:"finish_time"`
+	RequestTime      *time.Time `gorm:"type:timetz" json:"request_time"`
+	Status           string     `gorm:"type:varchar;default:'processing';not null" json:"status"`
+	Duration         *int       `json:"duration"`
+	PromptID         *int       `gorm:"index" json:"prompt_id"`
+}
+
+type CldPrompt struct {
+	ID         int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Prompt     string    `gorm:"type:text" json:"prompt"`
+	UpdateTime time.Time `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP;not null" json:"update_time"`
+}
+
+func (CldDialogue) TableName() string {
+	return "cld_dialogue"
+}
+
+func (CldPrompt) TableName() string {
+	return "cld_prompt"
+}
+
+type CldError struct {
+	ID             int       `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConversationID string    `gorm:"type:varchar" json:"conversation_id"`
+	Error          string    `gorm:"type:text;not null" json:"error"`
+	DeviceID       string    `gorm:"type:varchar" json:"device_id"`
+	Platform       string    `gorm:"type:varchar" json:"platform"`
+	Version        string    `gorm:"type:varchar" json:"version"`
+	CreateTime     time.Time `gorm:"type:timestamptz;default:CURRENT_TIMESTAMP;not null" json:"create_time"`
+}
+
+func (CldError) TableName() string {
+	return "cld_error"
+}
 
 func InitDB(cfg *Config) (*Database, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
@@ -80,19 +110,29 @@ func InitDB(cfg *Config) (*Database, error) {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
-	if err := db.AutoMigrate(&CldDevice{}); err != nil {
-		return nil, fmt.Errorf("migrate cld_device table failed: %v", err)
+	if err := db.AutoMigrate(&CldDevice{}, &CldConversation{}, &CldDialogue{}, &CldError{}, &CldPrompt{}); err != nil {
+		return nil, fmt.Errorf("failed to auto migrate: %v", err)
 	}
-	if !db.Migrator().HasTable(&CldMessage{}) {
-		if err := db.Migrator().CreateTable(&CldMessage{}); err != nil {
-			return nil, fmt.Errorf("create cld_message table failed: %v", err)
-		}
-	}
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_conversation_id ON cld_message(conversation_id)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_receive_time ON cld_message(receive_time DESC)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_status ON cld_message(status)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_conversation_exchange ON cld_message(conversation_id, exchange_number)`)
-	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_device_id ON cld_message(device_id)`)
+	db.Exec(`
+		DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cld_device_check') THEN
+				ALTER TABLE cld_device ADD CONSTRAINT cld_device_check
+				CHECK (platform IN ('windows', 'android', 'linux', 'macos', 'ios'));
+			END IF;
+		END $$;
+	`)
+	db.Exec(`
+		DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cld_dialogue_check') THEN
+				ALTER TABLE cld_dialogue ADD CONSTRAINT cld_dialogue_check
+				CHECK (status IN ('waiting', 'processing', 'replying', 'done', 'send_failed', 'reply_failed'));
+			END IF;
+		END $$;
+	`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_dialogue_conversation_id ON cld_dialogue(conversation_id)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_dialogue_create_time ON cld_dialogue(create_time DESC)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_dialogue_status ON cld_dialogue(status)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_cld_conversation_device_id ON cld_conversation(device_id)`)
 	log.Println("Database initialized successfully")
 	return &Database{DB: db}, nil
 }
@@ -107,10 +147,10 @@ func (d *Database) Close() error {
 
 func (d *Database) LoadStats() error {
 	var completed, failed int64
-	if err := d.Model(&Message{}).Where("status = ?", "done").Count(&completed).Error; err != nil {
+	if err := d.Model(&CldDialogue{}).Where("status = ?", "done").Count(&completed).Error; err != nil {
 		return err
 	}
-	if err := d.Model(&Message{}).Where("status != ? AND status != ?", "done", "processing").Count(&failed).Error; err != nil {
+	if err := d.Model(&CldDialogue{}).Where("status NOT IN ?", []string{"done", "processing", "waiting", "replying"}).Count(&failed).Error; err != nil {
 		return err
 	}
 	d.statsMutex.Lock()
@@ -163,8 +203,8 @@ func (d *Database) IsShutdown() bool {
 	return d.stats.ServiceShutdown
 }
 
-func (d *Database) CreateMessage(msg *Message) error {
-	err := d.Create(msg).Error
+func (d *Database) CreateDialogue(dialogue *CldDialogue) error {
+	err := d.Create(dialogue).Error
 	if err == nil {
 		broadcastHistory()
 		broadcastStats()
@@ -172,8 +212,8 @@ func (d *Database) CreateMessage(msg *Message) error {
 	return err
 }
 
-func (d *Database) UpdateMessage(msg *Message) error {
-	err := d.Save(msg).Error
+func (d *Database) UpdateDialogue(dialogue *CldDialogue) error {
+	err := d.Save(dialogue).Error
 	if err == nil {
 		broadcastHistory()
 		broadcastStats()
@@ -181,110 +221,93 @@ func (d *Database) UpdateMessage(msg *Message) error {
 	return err
 }
 
-func (d *Database) GetMessageByID(id int64) (*Message, error) {
-	var msg Message
-	err := d.First(&msg, id).Error
-	return &msg, err
+func (d *Database) GetDialogueByID(id int) (*CldDialogue, error) {
+	var dialogue CldDialogue
+	err := d.First(&dialogue, id).Error
+	return &dialogue, err
 }
 
-func (d *Database) GetConversationMessages(conversationID string) ([]Message, error) {
-	var messages []Message
+func (d *Database) GetConversationDialogues(conversationID int) ([]CldDialogue, error) {
+	var dialogues []CldDialogue
 	err := d.Where("conversation_id = ?", conversationID).
-		Order("exchange_number ASC").
-		Find(&messages).Error
-	return messages, err
+		Order(`"order" ASC`).
+		Find(&dialogues).Error
+	return dialogues, err
 }
 
-func (d *Database) GetRecentMessages(limit int) ([]Message, error) {
-	var messages []Message
-	err := d.Order("receive_time DESC").Limit(limit).Find(&messages).Error
-	return messages, err
+func (d *Database) GetRecentDialogues(limit int) ([]CldDialogue, error) {
+	var dialogues []CldDialogue
+	err := d.Order("create_time DESC").Limit(limit).Find(&dialogues).Error
+	return dialogues, err
 }
 
-func (d *Database) GetMessagesAfterTime(afterTime time.Time, limit int) ([]Message, error) {
-	var messages []Message
-	err := d.Where("receive_time > ?", afterTime).
-		Order("receive_time DESC").
-		Limit(limit).
-		Find(&messages).Error
-	return messages, err
+func (d *Database) GetDialoguesByStatus(status string) ([]CldDialogue, error) {
+	var dialogues []CldDialogue
+	err := d.Where("status = ?", status).Find(&dialogues).Error
+	return dialogues, err
 }
 
-func (d *Database) GetMessagesByStatus(status string) ([]Message, error) {
-	var messages []Message
-	err := d.Where("status = ?", status).Find(&messages).Error
-	return messages, err
-}
-
-func (d *Database) DeleteConversation(conversationID string) error {
-	return d.Where("conversation_id = ?", conversationID).Delete(&Message{}).Error
+func (d *Database) DeleteConversation(conversationID int) error {
+	return d.Where("id = ?", conversationID).Delete(&CldConversation{}).Error
 }
 
 func (d *Database) CalculateRates() (tpm, rpm, rpd float64, err error) {
 	now := time.Now()
 	oneMinuteAgo := now.Add(-1 * time.Minute)
 	oneDayAgo := now.Add(-24 * time.Hour)
-	var tokenCount int64
-	err = d.Model(&Message{}).
-		Where("receive_time >= ? AND status = ?", oneMinuteAgo, "done").
-		Select("COALESCE(SUM(tokens), 0)").
-		Scan(&tokenCount).Error
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	tpm = float64(tokenCount)
 	var requestCount int64
-	err = d.Model(&Message{}).
-		Where("receive_time >= ?", oneMinuteAgo).
+	err = d.Model(&CldDialogue{}).
+		Where("create_time >= ?", oneMinuteAgo).
 		Count(&requestCount).Error
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	rpm = float64(requestCount)
 	var dailyCount int64
-	err = d.Model(&Message{}).
-		Where("receive_time >= ?", oneDayAgo).
+	err = d.Model(&CldDialogue{}).
+		Where("create_time >= ?", oneDayAgo).
 		Count(&dailyCount).Error
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	rpd = float64(dailyCount)
-	return tpm, rpm, rpd, nil
+	return 0, rpm, rpd, nil
 }
 
-func (d *Database) GetNextExchangeNumber(conversationID string) (int, error) {
-	var maxNum int
-	err := d.Model(&Message{}).
+func (d *Database) GetNextDialogueOrder(conversationID int) (int, error) {
+	var maxOrder int
+	err := d.Model(&CldDialogue{}).
 		Where("conversation_id = ?", conversationID).
-		Select("COALESCE(MAX(exchange_number), 0)").
-		Scan(&maxNum).Error
-	return maxNum + 1, err
+		Select(`COALESCE(MAX("order"), 0)`).
+		Scan(&maxOrder).Error
+	return maxOrder + 1, err
 }
 
-func (d *Database) GetHistory(limit int) ([]Message, error) {
-	var messages []Message
-	err := d.Order("receive_time DESC").Limit(limit).Find(&messages).Error
-	return messages, err
+func (d *Database) GetHistory(limit int) ([]CldDialogue, error) {
+	var dialogues []CldDialogue
+	err := d.Order("create_time DESC").Limit(limit).Find(&dialogues).Error
+	return dialogues, err
 }
 
 type ConversationInfo struct {
-	ConversationID string    `json:"conversation_id"`
-	LastMessage    string    `json:"last_message"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	MessageCount   int       `json:"message_count"`
+	ID           int       `json:"id"`
+	DeviceID     int       `json:"device_id"`
+	LastMessage  string    `json:"last_message"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	DialogueCount int      `json:"dialogue_count"`
 }
 
 func (d *Database) GetAllConversations() ([]ConversationInfo, error) {
 	var results []ConversationInfo
 	err := d.Raw(`
 		SELECT
-			conversation_id,
-			MAX(request) as last_message,
-			MAX(receive_time) as updated_at,
-			COUNT(*) as message_count
-		FROM cld_message
-		GROUP BY conversation_id
-		ORDER BY MAX(receive_time) DESC
+			c.id,
+			c.device_id,
+			(SELECT user_message FROM cld_dialogue WHERE conversation_id = c.id ORDER BY "order" DESC LIMIT 1) as last_message,
+			(SELECT create_time FROM cld_dialogue WHERE conversation_id = c.id ORDER BY "order" DESC LIMIT 1) as updated_at,
+			(SELECT COUNT(*) FROM cld_dialogue WHERE conversation_id = c.id) as dialogue_count
+		FROM cld_conversation c
+		ORDER BY updated_at DESC NULLS LAST
 	`).Scan(&results).Error
 	return results, err
 }
@@ -315,10 +338,11 @@ func (d *Database) GetAllAPIs() ([]APIInfo, error) {
 	return apis, nil
 }
 
-func (d *Database) GetOrCreateDevice(deviceID string, platform string) (*CldDevice, error) {
+func (d *Database) GetOrCreateDevice(fingerprint string, platform string) (*CldDevice, error) {
 	var device CldDevice
-	err := d.Where("device_id = ?", deviceID).First(&device).Error
+	err := d.Where("fingerprint = ?", fingerprint).First(&device).Error
 	if err == nil {
+		d.Model(&device).Update("update_time", time.Now())
 		if platform != "" && device.Platform != platform {
 			d.Model(&device).Update("platform", platform)
 			device.Platform = platform
@@ -326,10 +350,13 @@ func (d *Database) GetOrCreateDevice(deviceID string, platform string) (*CldDevi
 		return &device, nil
 	}
 	device = CldDevice{
-		DeviceID:  deviceID,
-		Platform:  platform,
-		FirstSeen: time.Now(),
-		IsBanned:  false,
+		Platform:      platform,
+		CreateTime:    time.Now(),
+		UpdateTime:    time.Now(),
+		Banned:        false,
+		Admin:         false,
+		AdminPassword: "",
+		Fingerprint:   fingerprint,
 	}
 	if err := d.Create(&device).Error; err != nil {
 		return nil, err
@@ -337,37 +364,151 @@ func (d *Database) GetOrCreateDevice(deviceID string, platform string) (*CldDevi
 	return &device, nil
 }
 
-func (d *Database) IsDeviceBanned(deviceID string) (bool, string, error) {
+func (d *Database) GetDeviceByID(id int) (*CldDevice, error) {
 	var device CldDevice
-	err := d.Where("device_id = ?", deviceID).First(&device).Error
+	err := d.First(&device, id).Error
+	return &device, err
+}
+
+func (d *Database) GetDeviceByFingerprint(fingerprint string) (*CldDevice, error) {
+	var device CldDevice
+	err := d.Where("fingerprint = ?", fingerprint).First(&device).Error
+	return &device, err
+}
+
+func (d *Database) IsDeviceBanned(deviceID int) (bool, string, error) {
+	var device CldDevice
+	err := d.First(&device, deviceID).Error
 	if err != nil {
 		return false, "", nil
 	}
-	return device.IsBanned, device.BanReason, nil
+	banReason := ""
+	if device.BanReason != nil {
+		banReason = *device.BanReason
+	}
+	return device.Banned, banReason, nil
 }
 
-func (d *Database) BanDevice(deviceID string, reason string) error {
-	return d.Model(&CldDevice{}).Where("device_id = ?", deviceID).Updates(map[string]any{
-		"is_banned":  true,
+func (d *Database) BanDevice(deviceID int, reason string) error {
+	return d.Model(&CldDevice{}).Where("id = ?", deviceID).Updates(map[string]any{
+		"banned":     true,
 		"ban_reason": reason,
 	}).Error
 }
 
-func (d *Database) UnbanDevice(deviceID string) error {
-	return d.Model(&CldDevice{}).Where("device_id = ?", deviceID).Updates(map[string]any{
-		"is_banned":  false,
-		"ban_reason": "",
+func (d *Database) UnbanDevice(deviceID int) error {
+	return d.Model(&CldDevice{}).Where("id = ?", deviceID).Updates(map[string]any{
+		"banned":     false,
+		"ban_reason": nil,
 	}).Error
 }
 
 func (d *Database) GetAllDevices() ([]CldDevice, error) {
 	var devices []CldDevice
-	err := d.Order("first_seen DESC").Find(&devices).Error
+	err := d.Order("create_time DESC").Find(&devices).Error
 	return devices, err
 }
 
 func (d *Database) GetBannedDevices() ([]CldDevice, error) {
 	var devices []CldDevice
-	err := d.Where("is_banned = ?", true).Order("updated_at DESC").Find(&devices).Error
+	err := d.Where("banned = ?", true).Order("update_time DESC").Find(&devices).Error
 	return devices, err
+}
+
+func (d *Database) CreateConversation(deviceID int, uid string) (*CldConversation, error) {
+	conv := CldConversation{
+		UID:      uid,
+		DeviceID: deviceID,
+	}
+	if err := d.Create(&conv).Error; err != nil {
+		return nil, err
+	}
+	return &conv, nil
+}
+func (d *Database) GetConversationByUID(uid string) (*CldConversation, error) {
+	var conv CldConversation
+	err := d.Where("uid = ?", uid).First(&conv).Error
+	return &conv, err
+}
+
+func (d *Database) GetConversation(id int) (*CldConversation, error) {
+	var conv CldConversation
+	err := d.First(&conv, id).Error
+	return &conv, err
+}
+
+func (d *Database) GetDeviceConversations(deviceID int) ([]CldConversation, error) {
+	var conversations []CldConversation
+	err := d.Where("device_id = ?", deviceID).Find(&conversations).Error
+	return conversations, err
+}
+
+func (d *Database) IsDeviceAdmin(fingerprint string, password string) bool {
+	var device CldDevice
+	err := d.Where("fingerprint = ?", fingerprint).First(&device).Error
+	if err != nil {
+		return false
+	}
+	return device.Admin && device.AdminPassword == password
+}
+
+func (d *Database) UpdateDeviceNotice(fingerprint string, notice string) error {
+	return d.Model(&CldDevice{}).Where("fingerprint = ?", fingerprint).Update("notice", notice).Error
+}
+
+func (d *Database) GetDialogueWithConversation(dialogueID int) (*CldDialogue, *CldConversation, *CldDevice, error) {
+	var dialogue CldDialogue
+	if err := d.First(&dialogue, dialogueID).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	var conv CldConversation
+	if err := d.First(&conv, dialogue.ConversationID).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	var device CldDevice
+	if err := d.First(&device, conv.DeviceID).Error; err != nil {
+		return nil, nil, nil, err
+	}
+	return &dialogue, &conv, &device, nil
+}
+
+func (d *Database) SaveError(conversationID, errorMsg, deviceID, platform, version string) error {
+	errRecord := CldError{
+		ConversationID: conversationID,
+		Error:          errorMsg,
+		DeviceID:       deviceID,
+		Platform:       platform,
+		Version:        version,
+		CreateTime:     time.Now(),
+	}
+	return d.Create(&errRecord).Error
+}
+
+func (d *Database) GetCurrentPromptID() *int {
+	var prompt CldPrompt
+	err := d.Order("id DESC").First(&prompt).Error
+	if err != nil {
+		return nil
+	}
+	return &prompt.ID
+}
+
+func (d *Database) CreatePrompt(promptText string) (*CldPrompt, error) {
+	prompt := CldPrompt{
+		Prompt:     promptText,
+		UpdateTime: time.Now(),
+	}
+	if err := d.Create(&prompt).Error; err != nil {
+		return nil, err
+	}
+	return &prompt, nil
+}
+
+func (d *Database) GetLatestPrompt() (*CldPrompt, error) {
+	var prompt CldPrompt
+	err := d.Order("id DESC").First(&prompt).Error
+	if err != nil {
+		return nil, err
+	}
+	return &prompt, nil
 }

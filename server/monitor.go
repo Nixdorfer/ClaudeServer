@@ -99,6 +99,10 @@ func MonitorPromptChanges() {
 	promptMutex.Lock()
 	lastPromptHash = getPromptHash()
 	promptMutex.Unlock()
+	prompt := LoadSystemPrompt()
+	if prompt != "" && db != nil {
+		db.CreatePrompt(prompt)
+	}
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -110,6 +114,10 @@ func MonitorPromptChanges() {
 			promptMutex.Lock()
 			lastPromptHash = currentHash
 			promptMutex.Unlock()
+			newPrompt := LoadSystemPrompt()
+			if db != nil {
+				db.CreatePrompt(newPrompt)
+			}
 			log.Println("\n⚠️ 提示词已更新")
 		}
 	}
@@ -122,8 +130,8 @@ func getPromptHash() string {
 }
 
 func initPromptsFile() {
-	if _, err := os.Stat("../src/prompts.txt"); os.IsNotExist(err) {
-		file, err := os.Create("../src/prompts.txt")
+	if _, err := os.Stat("src/prompts.txt"); os.IsNotExist(err) {
+		file, err := os.Create("src/prompts.txt")
 		if err != nil {
 			log.Printf("创建 prompts.txt 失败: %v", err)
 			return

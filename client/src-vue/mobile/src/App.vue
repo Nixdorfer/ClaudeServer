@@ -16,6 +16,7 @@ const {
   currentConversation,
   messages,
   isConnected,
+  isConnecting,
   isLoading,
   error,
   usageStatus,
@@ -27,6 +28,7 @@ const {
   versionOutdated,
   versionOutdatedMessage,
   updateInfo,
+  reconnectAttempts,
   initialize,
   cleanup,
   sendMessage,
@@ -37,7 +39,10 @@ const {
   renameConversation,
   deleteConversation,
   checkForUpdates,
-  currentVersion
+  reportError,
+  updateDeviceNotice,
+  currentVersion,
+  wsEndpoint
 } = useChat()
 const activeTab = ref<'list' | 'chat' | 'settings'>('chat')
 const showBannedDialog = ref(true)
@@ -45,6 +50,7 @@ const showUsageBlockedDialog = ref(true)
 const showServerUnavailableDialog = ref(true)
 const showNoticeDialog = ref(false)
 const showUpdateDialog = ref(false)
+const settingsViewRef = ref<InstanceType<typeof SettingsView> | null>(null)
 const renderedNotice = computed(() => marked(noticeContent))
 const renderedBannedReason = computed(() => marked(bannedReason.value))
 const sendDisabled = computed(() => isBanned.value || usageBlocked.value || versionOutdated.value || serverUnavailable.value || !isConnected.value)
@@ -90,6 +96,13 @@ function handleDelete(id: string) {
 function handleTabChange(tab: 'list' | 'chat' | 'settings') {
   activeTab.value = tab
 }
+async function handleReportError(errorMsg: string, conversationId: string) {
+  await reportError(errorMsg, conversationId)
+}
+async function handleUpdateDeviceNotice(notice: string) {
+  const success = await updateDeviceNotice(notice)
+  settingsViewRef.value?.onNoticeSent(success)
+}
 </script>
 
 <template>
@@ -97,6 +110,7 @@ function handleTabChange(tab: 'list' | 'chat' | 'settings') {
     <MobileHeader
       :title="headerTitle"
       :is-connected="isConnected"
+      :is-connecting="isConnecting"
       :show-menu="false"
     />
     <ListView
@@ -117,18 +131,24 @@ function handleTabChange(tab: 'list' | 'chat' | 'settings') {
       :is-connected="isConnected"
       :error="error"
       :send-disabled="sendDisabled"
+      :conversation-id="currentConversationId"
       @send="sendMessage"
       @clear-error="clearError"
+      @report-error="handleReportError"
     />
     <SettingsView
+      ref="settingsViewRef"
       v-show="activeTab === 'settings'"
       class="flex-1 min-h-0"
       :is-connected="isConnected"
+      :is-connecting="isConnecting"
+      :reconnect-attempts="reconnectAttempts"
       :usage-status="usageStatus"
       :usage-blocked="usageBlocked"
       :usage-block-message="usageBlockMessage"
       :version="currentVersion"
       @reconnect="reconnect"
+      @update-device-notice="handleUpdateDeviceNotice"
     />
     <TabBar
       :active-tab="activeTab"
@@ -182,6 +202,10 @@ function handleTabChange(tab: 'list' | 'chat' | 'settings') {
         </div>
         <div class="space-y-3">
           <p class="text-zinc-300 text-sm">服务器暂时关闭或遇到异常</p>
+          <div class="bg-zinc-800/50 rounded-lg p-3">
+            <p class="text-xs text-zinc-400 mb-1">连接端点:</p>
+            <p class="text-xs text-zinc-500 break-all font-mono">{{ wsEndpoint }}</p>
+          </div>
           <div class="bg-zinc-800/50 rounded-lg p-3">
             <p class="text-xs text-zinc-400 mb-1">可以联系:</p>
             <p class="text-sm text-zinc-300">Telegram / Discord / QQ: <span class="text-btn-primary">@Nixdorfer</span></p>

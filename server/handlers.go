@@ -37,9 +37,25 @@ func (h *Handler) ChatCompletion(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Messages cannot be empty"})
 		return
 	}
-	conversationID := uuid.New().String()
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
+	devicePassword := c.GetHeader("X-Device-ID")
+	if devicePassword == "" {
+		devicePassword = uuid.New().String()
+	}
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
+	}
+	device, err := h.db.GetOrCreateDevice(devicePassword, platform)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+		return
+	}
+	convUID := uuid.New().String()
+	conv, err := h.db.CreateConversation(device.ID, convUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create conversation"})
+		return
+	}
 	userMessage := ""
 	for _, m := range req.Messages {
 		if m.Role == "user" {
@@ -47,20 +63,23 @@ func (h *Handler) ChatCompletion(c *gin.Context) {
 			break
 		}
 	}
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        userMessage,
-		ReceiveTime:    receiveTime,
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          1,
+		UserMessage:    userMessage,
+		CreateTime:     time.Now(),
 		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
 	}
-	h.db.CreateMessage(msg)
+	h.db.CreateDialogue(dialogue)
 	h.db.IncrementProcessing()
 	requestID := uuid.New().String()
 	processingMutex.Lock()
 	processingRequests[requestID] = &ProcessingRequest{
 		ID:          requestID,
-		SubmitTime:  receiveTime,
+		SubmitTime:  time.Now(),
 		InputTokens: 0,
 		UserMessage: userMessage,
 	}
@@ -72,39 +91,32 @@ func (h *Handler) ChatCompletion(c *gin.Context) {
 		processingMutex.Lock()
 		delete(processingRequests, requestID)
 		processingMutex.Unlock()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		cookie := h.config.GetCookie()
 		response, err := sendChatCompletion(h.config.GetOrganizationID(), cookie, req.Messages, req.Model, req.Stream)
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			h.db.IncrementFailed()
 			LogExchange(userMessage, err.Error(), true)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		msg.Response = response.Choices[0].Message.Content
-		msg.Status = "done"
-		inputTokens := response.Usage.PromptTokens
-		outputTokens := response.Usage.CompletionTokens
-		totalTokens := response.Usage.TotalTokens
-		msg.RequestTokens = &inputTokens
-		msg.ResponseTokens = &outputTokens
-		msg.Tokens = &totalTokens
-		h.db.UpdateMessage(msg)
+		assistantMsg := response.Choices[0].Message.Content
+		dialogue.AssistantMessage = &assistantMsg
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		h.db.IncrementCompleted()
-		LogExchange(userMessage, msg.Response, false)
+		LogExchange(userMessage, assistantMsg, false)
 		c.JSON(http.StatusOK, response)
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		h.db.IncrementFailed()
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Server busy, try again later"})
 	}
@@ -120,9 +132,25 @@ func (h *Handler) OllamaChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Messages cannot be empty"})
 		return
 	}
-	conversationID := uuid.New().String()
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
+	devicePassword := c.GetHeader("X-Device-ID")
+	if devicePassword == "" {
+		devicePassword = uuid.New().String()
+	}
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
+	}
+	device, err := h.db.GetOrCreateDevice(devicePassword, platform)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+		return
+	}
+	convUID := uuid.New().String()
+	conv, err := h.db.CreateConversation(device.ID, convUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create conversation"})
+		return
+	}
 	userMessage := ""
 	for _, m := range req.Messages {
 		if m.Role == "user" {
@@ -130,20 +158,23 @@ func (h *Handler) OllamaChat(c *gin.Context) {
 			break
 		}
 	}
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        userMessage,
-		ReceiveTime:    receiveTime,
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          1,
+		UserMessage:    userMessage,
+		CreateTime:     time.Now(),
 		Status:         "processing",
+		PromptID:       h.db.GetCurrentPromptID(),
 	}
-	h.db.CreateMessage(msg)
+	h.db.CreateDialogue(dialogue)
 	h.db.IncrementProcessing()
 	requestID := uuid.New().String()
 	processingMutex.Lock()
 	processingRequests[requestID] = &ProcessingRequest{
 		ID:          requestID,
-		SubmitTime:  receiveTime,
+		SubmitTime:  time.Now(),
 		InputTokens: 0,
 		UserMessage: userMessage,
 	}
@@ -155,8 +186,8 @@ func (h *Handler) OllamaChat(c *gin.Context) {
 		processingMutex.Lock()
 		delete(processingRequests, requestID)
 		processingMutex.Unlock()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
 		cookie := h.config.GetCookie()
 		openaiReq := OpenAIChatRequest{
 			Model:    req.Model,
@@ -164,30 +195,24 @@ func (h *Handler) OllamaChat(c *gin.Context) {
 			Stream:   req.Stream,
 		}
 		response, err := sendChatCompletion(h.config.GetOrganizationID(), cookie, openaiReq.Messages, openaiReq.Model, openaiReq.Stream)
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			h.db.IncrementFailed()
 			LogExchange(userMessage, err.Error(), true)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		msg.Response = response.Choices[0].Message.Content
-		msg.Status = "done"
-		inputTokens := response.Usage.PromptTokens
-		outputTokens := response.Usage.CompletionTokens
-		totalTokens := response.Usage.TotalTokens
-		msg.RequestTokens = &inputTokens
-		msg.ResponseTokens = &outputTokens
-		msg.Tokens = &totalTokens
-		h.db.UpdateMessage(msg)
+		assistantMsg := response.Choices[0].Message.Content
+		dialogue.AssistantMessage = &assistantMsg
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		h.db.IncrementCompleted()
-		LogExchange(userMessage, msg.Response, false)
+		LogExchange(userMessage, assistantMsg, false)
 		ollamaResponse := OllamaChatResponse{
 			Model:     req.Model,
 			CreatedAt: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -196,9 +221,8 @@ func (h *Handler) OllamaChat(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, ollamaResponse)
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		h.db.IncrementFailed()
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Server busy, try again later"})
 	}
@@ -215,44 +239,56 @@ func (h *Handler) DialogueChat(c *gin.Context) {
 		return
 	}
 	cookie := h.config.GetCookie()
-	var conversationID string
+	var claudeConversationID string
 	var parentMessageUUID string
 	if req.ConversationID != "" {
-		conversationID = req.ConversationID
-		session := h.dialogueManager.GetOrCreateSession(conversationID)
+		claudeConversationID = req.ConversationID
+		session := h.dialogueManager.GetOrCreateSession(claudeConversationID)
 		session.GeneratingMutex.RLock()
 		parentMessageUUID = session.LastMessageUUID
 		session.GeneratingMutex.RUnlock()
 		if parentMessageUUID == "00000000-0000-4000-8000-000000000000" {
-			newParentUUID, err := getConversationHistory(h.config.GetOrganizationID(), conversationID, cookie)
+			newParentUUID, err := getConversationHistory(h.config.GetOrganizationID(), claudeConversationID, cookie)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get conversation history"})
 				return
 			}
 			parentMessageUUID = newParentUUID
-			h.dialogueManager.UpdateSession(conversationID, parentMessageUUID)
+			h.dialogueManager.UpdateSession(claudeConversationID, parentMessageUUID)
 		}
 	} else {
 		var err error
-		conversationID, err = createConversation(h.config.GetOrganizationID(), cookie, true)
+		claudeConversationID, err = createConversation(h.config.GetOrganizationID(), cookie, true)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create conversation"})
 			return
 		}
 		parentMessageUUID = "00000000-0000-4000-8000-000000000000"
-		h.dialogueManager.GetOrCreateSession(conversationID)
+		h.dialogueManager.GetOrCreateSession(claudeConversationID)
 	}
-	receiveTime := time.Now()
-	exchangeNum, _ := h.db.GetNextExchangeNumber(conversationID)
-	msg := &Message{
-		ConversationID: conversationID,
-		ExchangeNumber: exchangeNum,
-		Request:        req.Request,
-		ReceiveTime:    receiveTime,
-		Status:         "processing",
+	devicePassword := c.GetHeader("X-Device-ID")
+	if devicePassword == "" {
+		devicePassword = uuid.New().String()
 	}
-	h.db.CreateMessage(msg)
-	session := h.dialogueManager.GetOrCreateSession(conversationID)
+	platform := c.GetHeader("X-Platform")
+	if platform == "" {
+		platform = "windows"
+	}
+	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
+	conv, _ := h.db.CreateConversation(device.ID, claudeConversationID)
+	dialogueOrder, _ := h.db.GetNextDialogueOrder(conv.ID)
+	dialogueUID := uuid.New().String()
+	dialogue := &CldDialogue{
+		UID:            dialogueUID,
+		ConversationID: conv.ID,
+		Order:          dialogueOrder,
+		UserMessage:    req.Request,
+		CreateTime:     time.Now(),
+		Status:         "waiting",
+		PromptID:       h.db.GetCurrentPromptID(),
+	}
+	h.db.CreateDialogue(dialogue)
+	session := h.dialogueManager.GetOrCreateSession(claudeConversationID)
 	session.GeneratingMutex.Lock()
 	session.IsGenerating = true
 	session.GeneratingMutex.Unlock()
@@ -266,14 +302,16 @@ func (h *Handler) DialogueChat(c *gin.Context) {
 			session.GeneratingMutex.Unlock()
 			broadcastDialogues()
 		}()
-		sendTime := time.Now()
-		msg.SendTime = &sendTime
+		requestTime := time.Now()
+		dialogue.RequestTime = &requestTime
+		dialogue.Status = "processing"
+		h.db.UpdateDialogue(dialogue)
 		dialogueStreamMutex.Lock()
-		dialogueStreams[conversationID] = ""
+		dialogueStreams[claudeConversationID] = ""
 		dialogueStreamMutex.Unlock()
 		response, err := sendDialogueMessageWithOptions(
 			h.config.GetOrganizationID(),
-			conversationID,
+			claudeConversationID,
 			cookie,
 			req.Request,
 			parentMessageUUID,
@@ -281,41 +319,39 @@ func (h *Handler) DialogueChat(c *gin.Context) {
 			req.Style,
 			func(chunk string) {
 				dialogueStreamMutex.Lock()
-				dialogueStreams[conversationID] = chunk
+				dialogueStreams[claudeConversationID] = chunk
 				dialogueStreamMutex.Unlock()
 			},
 		)
 		dialogueStreamMutex.Lock()
-		delete(dialogueStreams, conversationID)
+		delete(dialogueStreams, claudeConversationID)
 		dialogueStreamMutex.Unlock()
-		responseTime := time.Now()
-		msg.ResponseTime = &responseTime
-		duration := responseTime.Sub(sendTime).Seconds()
-		msg.Duration = &duration
+		finishTime := time.Now()
+		dialogue.FinishTime = &finishTime
+		duration := int(finishTime.Sub(dialogue.CreateTime).Milliseconds())
+		dialogue.Duration = &duration
 		if err != nil {
-			msg.Status = "failed"
-			msg.Notice = err.Error()
-			h.db.UpdateMessage(msg)
+			dialogue.Status = "send_failed"
+			h.db.UpdateDialogue(dialogue)
 			LogExchange(req.Request, err.Error(), true)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message: " + err.Error()})
 			return
 		}
-		newParentUUID, err := getConversationHistory(h.config.GetOrganizationID(), conversationID, cookie)
+		newParentUUID, err := getConversationHistory(h.config.GetOrganizationID(), claudeConversationID, cookie)
 		if err == nil {
-			h.dialogueManager.UpdateSession(conversationID, newParentUUID)
+			h.dialogueManager.UpdateSession(claudeConversationID, newParentUUID)
 		}
-		msg.Response = response
-		msg.Status = "done"
-		h.db.UpdateMessage(msg)
+		dialogue.AssistantMessage = &response
+		dialogue.Status = "done"
+		h.db.UpdateDialogue(dialogue)
 		LogExchange(req.Request, response, false)
 		c.JSON(http.StatusOK, DialogueResponse{
-			ConversationID: conversationID,
+			ConversationID: claudeConversationID,
 			Response:       response,
 		})
 	default:
-		msg.Status = "overloaded"
-		msg.Notice = "Server busy"
-		h.db.UpdateMessage(msg)
+		dialogue.Status = "send_failed"
+		h.db.UpdateDialogue(dialogue)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Server busy, try again later"})
 	}
 }
@@ -338,16 +374,10 @@ func (h *Handler) GetProcessingRequests(c *gin.Context) {
 	for id, session := range h.dialogueManager.sessions {
 		session.GeneratingMutex.RLock()
 		if session.IsGenerating {
-			messages, _ := h.db.GetConversationMessages(id)
-			userMsg := ""
-			if len(messages) > 0 {
-				userMsg = truncateString(messages[len(messages)-1].Request, 50)
-			}
 			dialogues = append(dialogues, map[string]any{
-				"id":           id,
-				"submit_time":  session.LastUsedTime,
-				"user_message": userMsg,
-				"type":         "dialogue",
+				"id":          id,
+				"submit_time": session.LastUsedTime,
+				"type":        "dialogue",
 			})
 		}
 		session.GeneratingMutex.RUnlock()
@@ -390,16 +420,10 @@ func (h *Handler) StreamProcessingRequests(c *gin.Context) {
 			for id, session := range h.dialogueManager.sessions {
 				session.GeneratingMutex.RLock()
 				if session.IsGenerating {
-					messages, _ := h.db.GetConversationMessages(id)
-					userMsg := ""
-					if len(messages) > 0 {
-						userMsg = truncateString(messages[len(messages)-1].Request, 50)
-					}
 					requests = append(requests, map[string]any{
-						"id":           id,
-						"submit_time":  session.LastUsedTime,
-						"user_message": userMsg,
-						"type":         "dialogue",
+						"id":          id,
+						"submit_time": session.LastUsedTime,
+						"type":        "dialogue",
 					})
 				}
 				session.GeneratingMutex.RUnlock()
@@ -437,12 +461,32 @@ func (h *Handler) GetRecords(c *gin.Context) {
 	if req.Limit <= 0 {
 		req.Limit = 100
 	}
-	messages, err := h.db.GetHistory(req.Limit)
+	dialogues, err := h.db.GetHistory(req.Limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get records"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"messages": messages})
+	if h.config.PrivateMode {
+		result := make([]map[string]any, len(dialogues))
+		for i, d := range dialogues {
+			conv, _ := h.db.GetConversation(d.ConversationID)
+			deviceID := 0
+			if conv != nil {
+				deviceID = conv.DeviceID
+			}
+			result[i] = map[string]any{
+				"id":          d.ID,
+				"device_id":   deviceID,
+				"create_time": d.CreateTime,
+				"duration":    d.Duration,
+				"status":      d.Status,
+				"request":     truncateRunes(d.UserMessage, 5),
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"messages": result, "private_mode": true})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": dialogues})
 }
 
 func (h *Handler) GetRecordDetail(c *gin.Context) {
@@ -451,14 +495,14 @@ func (h *Handler) GetRecordDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing record ID"})
 		return
 	}
-	var msgID int64
-	fmt.Sscanf(id, "%d", &msgID)
-	message, err := h.db.GetMessageByID(msgID)
+	var dialogueID int
+	fmt.Sscanf(id, "%d", &dialogueID)
+	dialogue, err := h.db.GetDialogueByID(dialogueID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Record not found"})
 		return
 	}
-	c.JSON(http.StatusOK, message)
+	c.JSON(http.StatusOK, dialogue)
 }
 
 func (h *Handler) GetProcessingRequestDetail(c *gin.Context) {
@@ -493,21 +537,25 @@ func (h *Handler) StreamProcessingRequest(c *gin.Context) {
 	}
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
-	var msgID int64
-	fmt.Sscanf(id, "%d", &msgID)
+	var dialogueID int
+	fmt.Sscanf(id, "%d", &dialogueID)
 	for {
 		select {
 		case <-c.Request.Context().Done():
 			return
 		case <-ticker.C:
-			message, err := h.db.GetMessageByID(msgID)
+			dialogue, err := h.db.GetDialogueByID(dialogueID)
 			if err != nil {
 				continue
 			}
-			if message.Status == "done" || message.Status == "failed" {
+			if dialogue.Status == "done" || dialogue.Status == "send_failed" || dialogue.Status == "reply_failed" {
+				response := ""
+				if dialogue.AssistantMessage != nil {
+					response = *dialogue.AssistantMessage
+				}
 				data := map[string]any{
-					"status":   message.Status,
-					"response": message.Response,
+					"status":   dialogue.Status,
+					"response": response,
 					"done":     true,
 				}
 				jsonData, _ := json.Marshal(data)
@@ -516,7 +564,7 @@ func (h *Handler) StreamProcessingRequest(c *gin.Context) {
 				return
 			}
 			data := map[string]any{
-				"status": message.Status,
+				"status": dialogue.Status,
 				"done":   false,
 			}
 			jsonData, _ := json.Marshal(data)
@@ -552,7 +600,7 @@ func (h *Handler) StreamHistoryUpdates(c *gin.Context) {
 }
 
 func (h *Handler) GetVersionChanges(c *gin.Context) {
-	changes, err := LoadVersionChanges("../src/changes.yaml")
+	changes, err := LoadVersionChanges("src/changes.yaml")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load version changes"})
 		return
@@ -575,12 +623,14 @@ func (h *Handler) GetDialogueHistory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing dialogue ID"})
 		return
 	}
-	messages, err := h.db.GetConversationMessages(id)
+	var convID int
+	fmt.Sscanf(id, "%d", &convID)
+	dialogues, err := h.db.GetConversationDialogues(convID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get dialogue history"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"messages": messages})
+	c.JSON(http.StatusOK, gin.H{"messages": dialogues})
 }
 
 func (h *Handler) StreamDialogueResponse(c *gin.Context) {
@@ -647,15 +697,19 @@ func (h *Handler) GetUsage(c *gin.Context) {
 }
 
 func (h *Handler) CheckDeviceStatus(c *gin.Context) {
-	deviceID := c.Query("device_id")
-	if deviceID == "" {
+	devicePassword := c.Query("device_id")
+	if devicePassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id required"})
 		return
 	}
 	platform := c.Query("platform")
-	_, err := h.db.GetOrCreateDevice(deviceID, platform)
+	device, err := h.db.GetOrCreateDevice(devicePassword, platform)
 	if err != nil {
-		log.Printf("Failed to register device %s: %v", deviceID, err)
+		log.Printf("Failed to register device %s: %v", devicePassword, err)
+	}
+	deviceID := 0
+	if device != nil {
+		deviceID = device.ID
 	}
 	isBanned, banReason, _ := h.db.IsDeviceBanned(deviceID)
 	usage := getUsage()
@@ -915,4 +969,67 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
+func (h *Handler) GetUIConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"private_mode": h.config.PrivateMode,
+	})
+}
+
+type ErrorReportRequest struct {
+	Error          string `json:"error"`
+	ConversationID string `json:"conversation_id"`
+	DeviceID       string `json:"device_id"`
+	Platform       string `json:"platform"`
+	Version        string `json:"version"`
+}
+
+func (h *Handler) ReportError(c *gin.Context) {
+	var req ErrorReportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if req.Error == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error message is required"})
+		return
+	}
+	if err := h.db.SaveError(req.ConversationID, req.Error, req.DeviceID, req.Platform, req.Version); err != nil {
+		log.Printf("Failed to save error report: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Error reported successfully"})
+}
+
+type UpdateDeviceNoticeRequest struct {
+	DeviceID string `json:"device_id"`
+	Notice   string `json:"notice"`
+}
+
+func (h *Handler) UpdateDeviceNotice(c *gin.Context) {
+	var req UpdateDeviceNoticeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if req.DeviceID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id is required"})
+		return
+	}
+	if err := h.db.UpdateDeviceNotice(req.DeviceID, req.Notice); err != nil {
+		log.Printf("Failed to update device notice: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update notice"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Notice updated successfully"})
 }

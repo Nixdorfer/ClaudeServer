@@ -55,7 +55,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--diagnose-mcp", "-d":
-			config, err := LoadConfig("../src/config.yaml")
+			config, err := LoadConfig("src/config.yaml")
 			if err != nil {
 				log.Fatal("配置加载失败:", err)
 			}
@@ -63,7 +63,7 @@ func main() {
 			DiagnoseMCP(config)
 			return
 		case "--test-mcp-client", "-t":
-			config, err := LoadConfig("../src/config.yaml")
+			config, err := LoadConfig("src/config.yaml")
 			if err != nil {
 				log.Fatal("配置加载失败:", err)
 			}
@@ -123,7 +123,7 @@ func main() {
 			return
 		}
 	}
-	config, err := LoadConfig("../src/config.yaml")
+	config, err := LoadConfig("src/config.yaml")
 	if err != nil {
 		log.Fatal("配置加载失败:", err)
 	}
@@ -183,7 +183,7 @@ func PrintStartupInfo(cfg *Config) {
 }
 
 func LoadSystemPrompt() string {
-	content, err := os.ReadFile("../src/prompts.txt")
+	content, err := os.ReadFile("src/prompts.txt")
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("读取 prompts.txt 失败: %v", err)

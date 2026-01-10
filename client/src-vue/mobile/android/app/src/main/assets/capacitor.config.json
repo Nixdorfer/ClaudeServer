@@ -1,0 +1,14 @@
+{
+	"appId": "com.nixdorfer.claude.mobile",
+	"appName": "Claude Chat",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	},
+	"android": {},
+	"plugins": {
+		"CapacitorHttp": {
+			"enabled": true
+		}
+	}
+}

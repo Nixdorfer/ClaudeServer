@@ -1,10 +1,15 @@
 $ErrorActionPreference = "Continue"
 $ROOT = $PSScriptRoot + "\"
-$tauriConfig = Get-Content "${ROOT}client\src-tauri\tauri.conf.json" | ConvertFrom-Json
-$VERSION = $tauriConfig.version
+trap {
+    Set-Location $ROOT
+    break
+}
+$INFO_JSON = Get-Content "${ROOT}info.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+$VERSION = $INFO_JSON[0].version
 $CLIENT_FLAG = $args -contains "-c"
 $MOBILE_FLAG = $args -contains "-m"
 $BUILD_FLAG = $args -contains "-b"
+$DEV_FLAG = $args -contains "-d"
 
 function Check-Node {
     if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
@@ -32,17 +37,15 @@ function Check-Go {
     }
 }
 
-function Check-Rust {
-    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-        Write-Host "[Error] Rust not found. Installing via rustup..."
-        Invoke-WebRequest -Uri "https://win.rustup.rs" -OutFile "$env:TEMP\rustup-init.exe"
-        & "$env:TEMP\rustup-init.exe" -y
+function Check-Wails {
+    if (-not (Get-Command wails3 -ErrorAction SilentlyContinue)) {
+        Write-Host "[Info] Wails CLI not found. Installing..."
+        go install github.com/wailsapp/wails/v3/cmd/wails3@latest
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "[Error] Failed to install Rust. Please install manually from https://rustup.rs"
+            Write-Host "[Error] Failed to install Wails CLI."
             exit 1
         }
-        Write-Host "[Info] Rust installed. Please restart the terminal."
-        exit 1
+        Write-Host "[Info] Wails CLI installed."
     }
 }
 
@@ -94,25 +97,89 @@ function Start-Emulator {
     }
 }
 
-if (-not $CLIENT_FLAG) {
-    Check-Go
-    Write-Host "[Server] Starting..."
-    Set-Location "${ROOT}server"
-    go run .
-    Set-Location $ROOT
-    exit 0
-}
-
-if ($MOBILE_FLAG) {
+try {
+    if (-not $CLIENT_FLAG) {
+        Check-Go
+        $frpProcess = $null
+        $frpPath = "${ROOT}frp.lnk"
+        if (Test-Path $frpPath) {
+            Write-Host "[FRP] Starting frp..."
+            $frpProcess = Start-Process $frpPath -PassThru
+            Start-Sleep -Seconds 2
+        }
+        if ($DEV_FLAG) {
+            Write-Host "[Server] Starting dev mode..."
+        } else {
+            Write-Host "[Server] Starting release mode..."
+        }
+        Set-Location "${ROOT}server"
+        go run .
+        if ($frpProcess) {
+            Write-Host "[FRP] Stopping frp..."
+            Stop-Process -Id $frpProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        exit 0
+    }
+    if ($MOBILE_FLAG) {
+        Check-Node
+        Check-Android
+        Compile-Notice
+        if ($BUILD_FLAG) {
+            Write-Host "[Mobile] Building release..."
+            Write-Host "[Mobile] Stopping dev servers..."
+            Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            Set-Location "${ROOT}client\src-vue\mobile"
+            Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
+            npm install
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[Error] npm install failed"
+                exit 1
+            }
+            npm run build
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[Error] Build failed"
+                exit 1
+            }
+            npx cap sync
+            Set-Location android
+            Write-Host "[Mobile] Cleaning previous build..."
+            Remove-Item -Path ".gradle" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "app\.cxx" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "app\build" -Recurse -Force -ErrorAction SilentlyContinue
+            .\gradlew clean
+            .\gradlew assembleRelease
+            $TIMESTAMP = (Get-Date).ToString("HHmmss")
+            Copy-Item "${ROOT}client\src-vue\mobile\android\app\build\outputs\apk\release\app-release.apk" "${ROOT}ClaudeClient-android-v${VERSION}-${TIMESTAMP}.apk"
+            Write-Host "[Mobile] Output: ${ROOT}ClaudeClient-android-v${VERSION}-${TIMESTAMP}.apk"
+        } else {
+            Write-Host "[Mobile] Starting dev mode..."
+            Set-Location "${ROOT}client\src-vue\mobile"
+            Write-Host "[Mobile] Cleaning cache..."
+            Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
+            npm install
+            npm run build
+            npx cap sync
+            $viteJob = Start-Process -FilePath "cmd" -ArgumentList "/c", "npm run dev" -PassThru -WindowStyle Normal
+            Start-Emulator
+            Set-Location "${ROOT}client\src-vue\mobile"
+            npx cap run android --target emulator-5554
+            Stop-Process -Id $viteJob.Id -Force -ErrorAction SilentlyContinue
+        }
+        exit 0
+    }
     Check-Node
-    Check-Android
+    Check-Go
+    Check-Wails
     Compile-Notice
     if ($BUILD_FLAG) {
-        Write-Host "[Mobile] Building release..."
-        Write-Host "[Mobile] Stopping dev servers..."
+        Write-Host "[PC] Building release..."
+        Write-Host "[PC] Stopping dev servers..."
         Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
-        Set-Location "${ROOT}client\src-vue\mobile"
+        Set-Location "${ROOT}client\src-vue\pc"
         Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
         npm install
@@ -125,75 +192,18 @@ if ($MOBILE_FLAG) {
             Write-Host "[Error] Build failed"
             exit 1
         }
-        npx cap sync
-        Set-Location android
-        Write-Host "[Mobile] Cleaning previous build..."
-        Remove-Item -Path ".gradle" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "app\.cxx" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "app\build" -Recurse -Force -ErrorAction SilentlyContinue
-        .\gradlew clean
-        .\gradlew assembleRelease
+        Set-Location "${ROOT}client\src-wails"
+        wails3 task windows:build
         $TIMESTAMP = (Get-Date).ToString("HHmmss")
-        Copy-Item "${ROOT}client\src-vue\mobile\android\app\build\outputs\apk\release\app-release.apk" "${ROOT}ClaudeClient-android-v${VERSION}-${TIMESTAMP}.apk"
-        Write-Host "[Mobile] Output: ${ROOT}ClaudeClient-android-v${VERSION}-${TIMESTAMP}.apk"
-        Set-Location $ROOT
+        Copy-Item "${ROOT}client\src-wails\bin\ClaudeChat.exe" "${ROOT}ClaudeClient-win64-v${VERSION}-${TIMESTAMP}.exe"
+        Write-Host "[PC] Output: ${ROOT}ClaudeClient-win64-v${VERSION}-${TIMESTAMP}.exe"
     } else {
-        Write-Host "[Mobile] Starting dev mode..."
-        Set-Location "${ROOT}client\src-vue\mobile"
-        Write-Host "[Mobile] Cleaning cache..."
-        Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
-        npm install
-        npm run build
-        npx cap sync
-        $viteJob = Start-Process -FilePath "cmd" -ArgumentList "/c", "npm run dev" -PassThru -WindowStyle Normal
-        Start-Emulator
-        Set-Location "${ROOT}client\src-vue\mobile"
-        npx cap run android --target emulator-5554
-        Stop-Process -Id $viteJob.Id -Force -ErrorAction SilentlyContinue
+        Write-Host "[PC] Starting dev mode..."
+        Set-Location "${ROOT}client\src-wails"
+        $env:DEV_MODE = "true"
+        wails3 dev -config ./build/config.yml
+        Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
     }
-    Set-Location $ROOT
-    exit 0
-}
-
-Check-Node
-Check-Rust
-Compile-Notice
-if ($BUILD_FLAG) {
-    Write-Host "[PC] Building release..."
-    Write-Host "[PC] Stopping dev servers..."
-    Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-    Set-Location "${ROOT}client\src-vue\pc"
-    Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
-    npm install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[Error] npm install failed"
-        exit 1
-    }
-    npm run build
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[Error] Build failed"
-        exit 1
-    }
-    Set-Location "${ROOT}client\src-tauri"
-    cargo tauri build
-    $TIMESTAMP = (Get-Date).ToString("HHmmss")
-    Copy-Item "${ROOT}client\src-tauri\target\release\claude-client.exe" "${ROOT}ClaudeClient-win64-v${VERSION}-${TIMESTAMP}.exe"
-    Write-Host "[PC] Output: ${ROOT}ClaudeClient-win64-v${VERSION}-${TIMESTAMP}.exe"
-    Set-Location $ROOT
-} else {
-    Write-Host "[PC] Starting dev mode..."
-    Set-Location "${ROOT}client\src-vue\pc"
-    Write-Host "[PC] Cleaning cache..."
-    Remove-Item -Path "node_modules\.vite" -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
-    npm install
-    $viteJob = Start-Process -FilePath "cmd" -ArgumentList "/c", "npm run dev" -PassThru -WindowStyle Normal
-    Start-Sleep -Seconds 3
-    Set-Location "${ROOT}client\src-tauri"
-    cargo tauri dev
-    Stop-Process -Id $viteJob.Id -Force -ErrorAction SilentlyContinue
+} finally {
     Set-Location $ROOT
 }

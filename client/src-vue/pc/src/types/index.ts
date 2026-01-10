@@ -26,8 +26,29 @@ export interface WSConversationData {
 
 export interface WSDoneData {
   conversation_id: string
+  dialogue_id?: number
   response: string
   done: boolean
+}
+
+export interface LocalDialogue {
+  id: number
+  uid: string
+  conversation_id: number
+  order: number
+  user_message: string
+  assistant_message?: string
+  create_time: string
+  finish_time?: string
+  request_time?: string
+  status: string
+  duration?: number
+}
+
+export interface LocalConv {
+  id: number
+  uid: string
+  device_id: number
 }
 
 export interface WSErrorData {

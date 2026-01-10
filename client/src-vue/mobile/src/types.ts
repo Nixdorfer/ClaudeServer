@@ -29,6 +29,25 @@ export interface UsageStatus {
   block_reset_time: string
 }
 
+export interface WSContentData {
+  text?: string
+  delta?: string
+}
+
+export interface WSConversationData {
+  conversation_id: string
+}
+
+export interface WSDoneData {
+  response: string
+  conversation_id?: string
+}
+
+export interface WSErrorData {
+  error: string
+  message?: string
+}
+
 export interface UpdateCheckResult {
   has_update: boolean
   current_version: string

@@ -12,6 +12,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
+    "highlight.js": "^11.11.1",
     "marked": "^9.0.0",
     "vue": "^3.2.37"
   },

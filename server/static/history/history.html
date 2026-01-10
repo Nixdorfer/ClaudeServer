@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>对话记录 - Claude API</title>
+    <link rel="stylesheet" href="/static/shared/common.css">
+    <link rel="stylesheet" href="/static/history/history.css">
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Claude API</h1>
+            <span class="version">v1.0.0</span>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item"><a href="/static/dashboard/dashboard.html" class="nav-link">📊 仪表盘</a></li>
+            <li class="nav-item"><a href="/static/dialogues/dialogues.html" class="nav-link">💬 当前对话</a></li>
+            <li class="nav-item"><a href="/static/history/history.html" class="nav-link">📜 对话记录</a></li>
+            <li class="nav-item"><a href="/static/apis/apis.html" class="nav-link">🔌 API接口</a></li>
+            <li class="nav-item"><a href="/static/changes/changes.html" class="nav-link">📋 版本更新</a></li>
+        </ul>
+        <div class="theme-toggle-container">
+            <label class="theme-toggle">
+                <span class="toggle-label">暗色模式</span>
+                <input type="checkbox" id="themeToggle" checked onchange="toggleTheme()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="warning-banner" id="warningBanner">
+            <h3>⚠️ 服务已停止</h3>
+            <p id="warningMessage"></p>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card processing"><h3>处理中</h3><div class="value" id="processing">0</div></div>
+            <div class="stat-card completed"><h3>已完成</h3><div class="value" id="completed">0</div></div>
+            <div class="stat-card failed"><h3>失败</h3><div class="value" id="failed">0</div></div>
+            <div class="stat-card"><h3>TPM</h3><div class="value" id="tpm">0</div></div>
+            <div class="stat-card"><h3>RPM</h3><div class="value" id="rpm">0</div></div>
+            <div class="stat-card"><h3>RPD</h3><div class="value" id="rpd">0</div></div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-header">
+                <h2>对话记录</h2>
+                <div class="header-controls">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" class="search-input" placeholder="搜索对话ID或消息内容...">
+                        <button onclick="searchHistory()" class="btn search-btn">搜索</button>
+                        <button onclick="clearSearch()" class="btn clear-search-btn">清除</button>
+                        <button onclick="clearCache()" class="btn" style="margin-left:10px;background:#FF5722;">清除缓存</button>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper"><table><thead><tr><th>ID</th><th id="idColumnHeader">对话ID</th><th>时间</th><th>耗时(s)</th><th>Token</th><th>状态</th><th>消息预览</th><th id="actionColumnHeader">操作</th></tr></thead><tbody id="historyTable"></tbody></table></div>
+            <div class="empty-state" id="emptyHistory">暂无记录</div>
+            <div class="pagination">
+                <button onclick="changePage(currentPage - 1)" class="btn pagination-btn" id="prevBtn" disabled>上一页</button>
+                <span class="pagination-info">第 <span id="currentPageSpan">1</span> 页 / 共 <span id="totalPagesSpan">1</span> 页</span>
+                <button onclick="changePage(currentPage + 1)" class="btn pagination-btn" id="nextBtn">下一页</button>
+                <div class="page-jump">
+                    <span>跳转到</span>
+                    <input type="number" id="pageInput" class="page-input" min="1" value="1">
+                    <button onclick="jumpToPage()" class="btn go-btn">GO</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detailModal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header"><h2>消息详情</h2><span class="close" onclick="closeModal()">&times;</span></div>
+            <div class="three-column-layout">
+                <div class="column-left">
+                    <div class="detail-section"><h3>消息ID</h3><div class="content" id="detailId"></div></div>
+                    <div class="detail-section"><h3>对话ID</h3><div class="content" id="detailConversationId"></div></div>
+                    <div class="detail-section"><h3>接收时间</h3><div class="content" id="detailReceiveTime"></div></div>
+                    <div class="detail-section"><h3>处理时长</h3><div class="content" id="detailDuration"></div></div>
+                    <div class="detail-section"><h3>Token统计</h3><div class="content" id="detailTokens"></div></div>
+                    <div class="detail-section"><h3>状态</h3><div class="content" id="detailStatus"></div></div>
+                </div>
+                <div class="column-middle">
+                    <div class="detail-section full-height"><h3>用户消息</h3><div class="content scrollable" id="detailRequest"></div></div>
+                </div>
+                <div class="column-right">
+                    <div class="detail-section full-height"><h3>Claude回复</h3><div class="content scrollable" id="detailResponse"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/shared/common.js"></script>
+    <script src="/static/history/history.js"></script>
+</body>
+</html>

@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 func getStaticPath() string {
-	staticPath := "../static"
+	staticPath := "static"
 	absPath, err := filepath.Abs(staticPath)
 	if err != nil {
 		log.Printf("警告: 无法获取静态文件绝对路径: %v", err)
@@ -134,6 +135,9 @@ func SetupRouter(cfg *Config, db *Database) *gin.Engine {
 	api.GET("/usage", handler.GetUsage)
 	api.GET("/stats", handler.GetStats)
 	api.GET("/device/status", handler.CheckDeviceStatus)
+	api.POST("/device/notice", handler.UpdateDeviceNotice)
+	api.GET("/ui-config", handler.GetUIConfig)
+	api.POST("/error", handler.ReportError)
 	return r
 }
 
@@ -194,6 +198,7 @@ type Handler struct {
 	db              *Database
 	semaphore       chan struct{}
 	dialogueManager *DialogueManager
+	pendingAcks     sync.Map
 }
 
 func NewHandler(cfg *Config, db *Database) *Handler {
@@ -358,7 +363,7 @@ func (h *Handler) GetConfig(c *gin.Context) {
 		{"path": "/api/version-changes", "description": "Get version changes", "method": "GET"},
 		{"path": "/data/websocket/create", "description": "Create persistent WebSocket connection", "method": "GET"},
 	}
-	changes, err := LoadVersionChanges("../src/changes.yaml")
+	changes, err := LoadVersionChanges("src/changes.yaml")
 	version := "1.0.0"
 	if err == nil {
 		version = GetLatestVersion(changes)

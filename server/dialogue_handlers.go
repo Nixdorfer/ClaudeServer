@@ -697,6 +697,10 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 	model, _ := data["model"].(string)
 	style, _ := data["style"].(string)
 	devicePassword, _ := data["device_id"].(string)
+	if devicePassword == "" {
+		sendWSError(conn, "Device ID is required")
+		return
+	}
 	if request == "" {
 		sendWSError(conn, "Request cannot be empty")
 		return
@@ -712,16 +716,18 @@ func (h *Handler) handleWSDialogueRequest(conn *websocket.Conn, msg map[string]a
 		return
 	}
 	platform := "windows"
-	device, _ := h.db.GetOrCreateDevice(devicePassword, platform)
-	if device != nil {
-		isBanned, banReason, _ := h.db.IsDeviceBanned(device.ID)
-		if isBanned {
-			sendWSMessage(conn, "banned", map[string]any{
-				"banned": true,
-				"reason": banReason,
-			})
-			return
-		}
+	device, err := h.db.GetOrCreateDevice(devicePassword, platform)
+	if err != nil || device == nil {
+		sendWSError(conn, "Failed to get or create device")
+		return
+	}
+	isBanned, banReason, _ := h.db.IsDeviceBanned(device.ID)
+	if isBanned {
+		sendWSMessage(conn, "banned", map[string]any{
+			"banned": true,
+			"reason": banReason,
+		})
+		return
 	}
 	if globalMCPSessionManager != nil {
 		if err := globalMCPSessionManager.EnsureInitialized(); err != nil {

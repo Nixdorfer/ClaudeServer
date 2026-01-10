@@ -14,7 +14,7 @@
             "移动端改为使用Capacitor实现",
             "PC端改为使用Wails实现"
         ],
-        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.0"
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
     },
     {
         "version": "1.1.1",

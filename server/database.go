@@ -33,7 +33,7 @@ type CldDevice struct {
 	Banned        bool      `gorm:"default:false;not null" json:"banned"`
 	BanReason     *string   `gorm:"type:varchar" json:"ban_reason"`
 	Admin         bool      `gorm:"default:false;not null" json:"admin"`
-	AdminPassword string    `gorm:"type:varchar;not null;uniqueIndex" json:"-"`
+	AdminPassword *string   `gorm:"type:varchar;uniqueIndex" json:"-"`
 	Fingerprint   string    `gorm:"type:varchar;not null;uniqueIndex" json:"fingerprint"`
 }
 
@@ -350,13 +350,12 @@ func (d *Database) GetOrCreateDevice(fingerprint string, platform string) (*CldD
 		return &device, nil
 	}
 	device = CldDevice{
-		Platform:      platform,
-		CreateTime:    time.Now(),
-		UpdateTime:    time.Now(),
-		Banned:        false,
-		Admin:         false,
-		AdminPassword: "",
-		Fingerprint:   fingerprint,
+		Platform:    platform,
+		CreateTime:  time.Now(),
+		UpdateTime:  time.Now(),
+		Banned:      false,
+		Admin:       false,
+		Fingerprint: fingerprint,
 	}
 	if err := d.Create(&device).Error; err != nil {
 		return nil, err
@@ -449,7 +448,7 @@ func (d *Database) IsDeviceAdmin(fingerprint string, password string) bool {
 	if err != nil {
 		return false
 	}
-	return device.Admin && device.AdminPassword == password
+	return device.Admin && device.AdminPassword != nil && *device.AdminPassword == password
 }
 
 func (d *Database) UpdateDeviceNotice(fingerprint string, notice string) error {

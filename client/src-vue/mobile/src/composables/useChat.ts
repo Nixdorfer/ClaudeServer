@@ -27,6 +27,7 @@ const bannedReason = ref('')
 const serverUnavailable = ref(false)
 const versionOutdated = ref(false)
 const versionOutdatedMessage = ref('')
+const offlineMode = ref(false)
 const updateInfo = ref<UpdateCheckResult | null>(null)
 const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
@@ -44,6 +45,19 @@ function getDeviceId(): string {
   return deviceId
 }
 
+function enterOfflineMode() {
+  offlineMode.value = true
+  isConnected.value = false
+  isConnecting.value = false
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+}
 export function useChat() {
   const currentConversation = computed(() =>
     conversations.value.find(c => c.conversation_id === currentConversationId.value)
@@ -83,7 +97,11 @@ export function useChat() {
     }
   }
   function connect() {
-    console.log('[WS] connect() called, ws:', ws?.readyState, 'serverUnavailable:', serverUnavailable.value)
+    console.log('[WS] connect() called, ws:', ws?.readyState, 'serverUnavailable:', serverUnavailable.value, 'offlineMode:', offlineMode.value)
+    if (offlineMode.value) {
+      console.log('[WS] Offline mode, skipping connection')
+      return
+    }
     if (ws && ws.readyState === WebSocket.OPEN) {
       console.log('[WS] Already connected, skipping')
       return
@@ -119,7 +137,7 @@ export function useChat() {
       console.log('[WS] Connection closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean)
       isConnected.value = false
       isConnecting.value = false
-      if (!isBanned.value && !serverUnavailable.value) {
+      if (!offlineMode.value && !isBanned.value && !serverUnavailable.value) {
         reconnectAttempts.value++
         console.log('[WS] Connect attempts:', reconnectAttempts.value)
         if (reconnectAttempts.value >= maxReconnectAttempts) {
@@ -137,9 +155,11 @@ export function useChat() {
       console.error('[WS] Connection error:', event)
       isConnected.value = false
       isConnecting.value = false
-      reconnectAttempts.value++
-      if (reconnectAttempts.value >= maxReconnectAttempts) {
-        serverUnavailable.value = true
+      if (!offlineMode.value) {
+        reconnectAttempts.value++
+        if (reconnectAttempts.value >= maxReconnectAttempts) {
+          serverUnavailable.value = true
+        }
       }
     }
     ws.onmessage = (event) => {
@@ -194,9 +214,7 @@ export function useChat() {
       isBanned.value = true
       bannedReason.value = (data.reason as string) || '您的设备已被封禁'
       isLoading.value = false
-      if (ws) {
-        ws.close()
-      }
+      enterOfflineMode()
     } else if (msg.type === 'usage_blocked' && data) {
       usageBlocked.value = true
       const reason = (data.block_reason as string) || ''
@@ -207,13 +225,12 @@ export function useChat() {
       if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
         messages.value.pop()
       }
+      enterOfflineMode()
     } else if (msg.type === 'version_outdated' && data) {
       versionOutdated.value = true
       versionOutdatedMessage.value = (data.message as string) || '当前版本已过时，无法继续使用，请更新到最新版本'
       isLoading.value = false
-      if (ws) {
-        ws.close()
-      }
+      enterOfflineMode()
     }
   }
   function sendAck(dialogueId: number) {
@@ -418,6 +435,7 @@ export function useChat() {
         console.log('[API] Device is banned')
         isBanned.value = true
         bannedReason.value = (data.ban_reason as string) || '您的设备已被封禁'
+        enterOfflineMode()
         return
       }
       if (data.is_blocked) {
@@ -426,6 +444,7 @@ export function useChat() {
         const reason = (data.block_reason as string) || ''
         const resetTime = (data.block_reset_time as string) || ''
         usageBlockMessage.value = formatUsageBlockMessage(reason, resetTime)
+        enterOfflineMode()
       }
     } catch (e) {
       console.error('[API] Failed to check device status:', e)
@@ -546,6 +565,7 @@ export function useChat() {
     serverUnavailable,
     versionOutdated,
     versionOutdatedMessage,
+    offlineMode,
     updateInfo,
     reconnectAttempts,
     initialize,

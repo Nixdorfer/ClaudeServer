@@ -1,5 +1,12 @@
 [
     {
+        "version": "1.2.2",
+        "note": [
+            "修复了一个可能会导致大量垃圾请求的异常"
+        ],
+        "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.1"
+    },
+    {
         "version": "1.2.1",
         "note": [
             "更改了数据库保存模式",

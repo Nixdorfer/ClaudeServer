@@ -2,9 +2,9 @@ import groovy.json.JsonSlurper
 
 apply plugin: 'com.android.application'
 
-def tauriConfigFile = file("../../../../src-tauri/tauri.conf.json")
-def tauriConfig = new JsonSlurper().parseText(tauriConfigFile.text)
-def appVersion = tauriConfig.version
+def infoFile = file("../../../../../info.json")
+def infoConfig = new JsonSlurper().parseText(infoFile.text)
+def appVersion = infoConfig[0].version
 def versionParts = appVersion.split('\\.').collect { it.toInteger() }
 def computedVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + (versionParts.size() > 2 ? versionParts[2] : 0)
 

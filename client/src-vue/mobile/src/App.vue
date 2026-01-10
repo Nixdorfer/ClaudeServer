@@ -27,6 +27,7 @@ const {
   serverUnavailable,
   versionOutdated,
   versionOutdatedMessage,
+  offlineMode,
   updateInfo,
   reconnectAttempts,
   initialize,
@@ -53,7 +54,7 @@ const showUpdateDialog = ref(false)
 const settingsViewRef = ref<InstanceType<typeof SettingsView> | null>(null)
 const renderedNotice = computed(() => marked(noticeContent))
 const renderedBannedReason = computed(() => marked(bannedReason.value))
-const sendDisabled = computed(() => isBanned.value || usageBlocked.value || versionOutdated.value || serverUnavailable.value || !isConnected.value)
+const sendDisabled = computed(() => offlineMode.value || serverUnavailable.value || !isConnected.value)
 const headerTitle = computed(() => {
   if (activeTab.value === 'list') return '对话列表'
   if (activeTab.value === 'settings') return '设置'
@@ -111,6 +112,7 @@ async function handleUpdateDeviceNotice(notice: string) {
       :title="headerTitle"
       :is-connected="isConnected"
       :is-connecting="isConnecting"
+      :offline-mode="offlineMode"
       :show-menu="false"
     />
     <ListView

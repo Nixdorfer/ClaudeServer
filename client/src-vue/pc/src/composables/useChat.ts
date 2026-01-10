@@ -31,6 +31,11 @@ const error = ref<string | null>(null)
 const usageStatus = ref<UsageStatus | null>(null)
 const usageBlocked = ref(false)
 const usageBlockMessage = ref('')
+const isBanned = ref(false)
+const bannedReason = ref('')
+const versionOutdated = ref(false)
+const versionOutdatedMessage = ref('')
+const offlineMode = ref(false)
 const serverUnavailable = ref(false)
 const reconnectAttempts = ref(0)
 const maxReconnectAttempts = 5
@@ -73,8 +78,14 @@ export function useChat() {
       reconnectTimer = null
     }
   }
+  function enterOfflineMode() {
+    offlineMode.value = true
+    isConnected.value = false
+    isConnecting.value = false
+    clearReconnectTimer()
+  }
   async function attemptAutoReconnect() {
-    if (serverUnavailable.value) return
+    if (offlineMode.value || serverUnavailable.value) return
     if (reconnectAttempts.value >= maxReconnectAttempts) {
       console.log('已达最大重连次数')
       return
@@ -216,12 +227,21 @@ export function useChat() {
       if (userMsg && userMsg.role === 'user') {
         messages.value.pop()
       }
+      enterOfflineMode()
     }))
-    unlisteners.push(Events.On('device_banned', () => {
+    unlisteners.push(Events.On('device_banned', (event: any) => {
+      const data = event?.data || event
+      isBanned.value = true
+      bannedReason.value = data?.reason || '您的设备已被封禁'
       isLoading.value = false
+      enterOfflineMode()
     }))
-    unlisteners.push(Events.On('version_outdated', () => {
+    unlisteners.push(Events.On('version_outdated', (event: any) => {
+      const data = event?.data || event
+      versionOutdated.value = true
+      versionOutdatedMessage.value = data?.message || '版本已过时'
       isLoading.value = false
+      enterOfflineMode()
     }))
     await loadDialogues()
     try {
@@ -405,6 +425,11 @@ export function useChat() {
     usageStatus,
     usageBlocked,
     usageBlockMessage,
+    isBanned,
+    bannedReason,
+    versionOutdated,
+    versionOutdatedMessage,
+    offlineMode,
     serverUnavailable,
     reconnectAttempts,
     initialize,

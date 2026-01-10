@@ -22,6 +22,11 @@ const {
   usageStatus,
   usageBlocked,
   usageBlockMessage,
+  isBanned,
+  bannedReason,
+  versionOutdated,
+  versionOutdatedMessage,
+  offlineMode,
   serverUnavailable,
   reconnectAttempts,
   initialize,
@@ -41,10 +46,8 @@ const showUpdateDialog = ref(false)
 const updateInfo = ref<UpdateCheckResult | null>(null)
 const currentVersion = ref('')
 const showConnectionErrorDialog = ref(false)
-const showBannedDialog = ref(false)
-const bannedReason = ref('')
-const showVersionOutdatedDialog = ref(false)
-const outdatedVersionInfo = ref<{ current_version: string; required_version: string; message: string } | null>(null)
+const showBannedDialog = ref(true)
+const showVersionOutdatedDialog = ref(true)
 const showNoticeDialog = ref(false)
 const noticeContent = ref(staticNoticeContent)
 const showUsageBlockedDialog = ref(true)
@@ -64,7 +67,7 @@ const renderedBannedReason = computed(() => {
   if (!bannedReason.value) return ''
   return marked(bannedReason.value) as string
 })
-const sendDisabled = computed(() => showBannedDialog.value || usageBlocked.value || showVersionOutdatedDialog.value || serverUnavailable.value || !isConnected.value)
+const sendDisabled = computed(() => offlineMode.value || serverUnavailable.value || !isConnected.value)
 
 async function openDownloadPage() {
   if (updateInfo.value?.download_url) {
@@ -116,14 +119,10 @@ onMounted(async () => {
       showConnectionErrorDialog.value = true
     }
   })
-  deviceBannedUnlisten = Events.On('device_banned', (event: any) => {
-    const data = event?.data || event
-    bannedReason.value = data?.reason || '您的设备已被封禁'
+  deviceBannedUnlisten = Events.On('device_banned', () => {
     showBannedDialog.value = true
   })
-  versionOutdatedUnlisten = Events.On('version_outdated', async (event: any) => {
-    const data = event?.data || event
-    outdatedVersionInfo.value = data
+  versionOutdatedUnlisten = Events.On('version_outdated', async () => {
     showVersionOutdatedDialog.value = true
     await checkForUpdates()
   })
@@ -187,6 +186,7 @@ async function handleSendDeviceNotice() {
       :usage-status="usageStatus"
       :usage-blocked="usageBlocked"
       :usage-block-message="usageBlockMessage"
+      :offline-mode="offlineMode"
       :version="currentVersion"
       @select="handleSelectConversation"
       @new-chat="newConversation"
@@ -293,7 +293,7 @@ async function handleSendDeviceNotice() {
     </Modal>
 
     <div
-      v-if="showVersionOutdatedDialog"
+      v-if="versionOutdated && showVersionOutdatedDialog"
       class="fixed inset-0 z-[10000] bg-black/90 flex items-center justify-center"
     >
       <div class="bg-zinc-900 border border-orange-500/50 rounded-xl p-8 max-w-md mx-4 shadow-2xl">
@@ -307,20 +307,9 @@ async function handleSendDeviceNotice() {
         </div>
         <div class="space-y-4">
           <p class="text-zinc-300">
-            {{ outdatedVersionInfo?.message }}
+            {{ versionOutdatedMessage }}
           </p>
           <div class="bg-zinc-800/50 rounded-lg p-4">
-            <div class="flex items-center gap-4 text-sm mb-3">
-              <div class="text-zinc-400">
-                当前版本: <span class="text-zinc-200">{{ outdatedVersionInfo?.current_version }}</span>
-              </div>
-              <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-              <div class="text-zinc-400">
-                最低要求: <span class="text-orange-400 font-medium">{{ outdatedVersionInfo?.required_version }}</span>
-              </div>
-            </div>
             <p class="text-sm text-zinc-400">请下载最新版本后重新打开应用</p>
           </div>
           <div v-if="updateInfo?.download_url" class="pt-2">
@@ -342,7 +331,7 @@ async function handleSendDeviceNotice() {
     </div>
 
     <div
-      v-if="showBannedDialog"
+      v-if="isBanned && showBannedDialog"
       class="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
       @click.self="showBannedDialog = false"
     >

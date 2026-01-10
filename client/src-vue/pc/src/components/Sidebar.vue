@@ -11,6 +11,7 @@ defineProps<{
   usageStatus: UsageStatus | null
   usageBlocked: boolean
   usageBlockMessage: string
+  offlineMode: boolean
   version: string
 }>()
 
@@ -125,20 +126,22 @@ function handleClickOutside(e: MouseEvent) {
       <span
         class="w-2 h-2 rounded-full"
         :class="[
+          offlineMode ? 'bg-zinc-500' :
           isConnected ? 'bg-green-500' :
           isConnecting ? 'bg-blue-500 animate-pulse' :
           'bg-red-500'
         ]"
       ></span>
-      <span class="text-zinc-400">
-        <template v-if="isConnected">已连接</template>
+      <span :class="offlineMode ? 'text-zinc-500' : 'text-zinc-400'">
+        <template v-if="offlineMode">离线模式</template>
+        <template v-else-if="isConnected">已连接</template>
         <template v-else-if="isConnecting">
           正在连接<span v-if="reconnectAttempts > 0"> ({{ reconnectAttempts }}/5)</span>
         </template>
         <template v-else>连接失败</template>
       </span>
       <button
-        v-if="!isConnected && !isConnecting"
+        v-if="!isConnected && !isConnecting && !offlineMode"
         @click="emit('reconnect')"
         class="ml-auto text-btn-primary hover:text-btn-hover text-xs"
       >

@@ -1,13 +1,13 @@
 [
     {
-        "version": "1.2.2",
+        "version": "0.0.0",
         "note": [
             "修复了一个可能会导致大量垃圾请求的异常"
         ],
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.1"
     },
     {
-        "version": "1.2.1",
+        "version": "0.0.0",
         "note": [
             "更改了数据库保存模式",
             "优化了代码显示",
@@ -16,7 +16,7 @@
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.2.1"
     },
     {
-        "version": "1.2.0",
+        "version": "0.0.0",
         "note": [
             "移动端改为使用Capacitor实现",
             "PC端改为使用Wails实现"
@@ -24,7 +24,7 @@
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
     },
     {
-        "version": "1.1.1",
+        "version": "0.0.0",
         "note": [
             "流式传输对话改为async防止阻塞主线程",
             "新增了移动端图标",
@@ -33,7 +33,7 @@
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases/tag/client-v1.1.1"
     },
     {
-        "version": "1.1.0",
+        "version": "0.0.0",
         "note": [
             "修复了一个发送消息时会导致i/o timeout的异常",
             "修复了用户发送长文本后 输入框无法缩回的异常",
@@ -45,7 +45,7 @@
         "url": "https://github.com/Nixdorfer/ClaudeServer/releases"
     },
     {
-        "version": "1.0.0",
+        "version": "0.0.0",
         "note": [
             "初始化程序"
         ],
